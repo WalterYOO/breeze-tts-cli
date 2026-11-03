@@ -1,17 +1,17 @@
-# Third-party notices
+# 第三方声明
 
-## Breeze TTS 2 inference sources
+## Breeze TTS 2 推理源码
 
-- Upstream: https://github.com/breezeblue-ai/breeze-tts
-- Vendored at commit: `daa6cb2efe5471f09369229f322d20bb956cb3c3`
-- Vendor location: `src/btts_cli/_vendor/breeze_tts/`
-- Upstream license: Apache License 2.0, copied verbatim to
-  `src/btts_cli/_vendor/breeze_tts/LICENSE`.
-- Upstream `NOTICE` file: not present at the vendored commit.
+- 上游：https://github.com/breezeblue-ai/breeze-tts
+- Vendored commit：`daa6cb2efe5471f09369229f322d20bb956cb3c3`
+- Vendored 位置：`src/btts_cli/_vendor/breeze_tts/`
+- 上游许可证：Apache License 2.0，原文完整复制到
+  `src/btts_cli/_vendor/breeze_tts/LICENSE`。
+- 上游 `NOTICE` 文件：该 vendored commit 中不存在。
 
-### Copied files
+### 复制的文件
 
-| Upstream path | Source SHA-256 | Vendored SHA-256 |
+| 上游路径 | 源码 SHA-256 | Vendored SHA-256 |
 |---|---|---|
 | `breeze_infer/__init__.py` | `810141b5e6326542...` | `a1810d5cdbfa0e2d...` |
 | `breeze_infer/runtime.py` | `a257d868b867009e...` | `6963cf7cdc998246...` |
@@ -27,26 +27,23 @@
 | `models/t5gemma2_compat.py` | `5902c67fdd3ca28b...` | `510fb03d4cbb4a77...` |
 | `LICENSE` | `c8858a5a76440bbc...` | `c8858a5a76440bbc...` |
 
-### Modifications
+### 修改
 
-1. All absolute imports rooted at `models` or `breeze_infer` were rewritten to
-   `btts_cli._vendor.breeze_tts.models` / `btts_cli._vendor.breeze_tts.breeze_infer` so the upstream
-   generic top-level package names are never installed.
-2. A two-line provenance header was prepended to every vendored file. Original
-   copyright and license headers are preserved below it.
-3. No behavioural code changes were made. CUDA-only modules
+1. 所有以 `models` 或 `breeze_infer` 为根的绝对 import 都改写为
+   `btts_cli._vendor.breeze_tts.models` / `btts_cli._vendor.breeze_tts.breeze_infer`，避免安装上游
+   通用的顶层包名。
+2. 每个 vendored 文件顶部都加入两行来源头；其下保留原始版权和许可证头。
+3. 未做行为性代码修改。仅 CUDA 的模块
    (`breeze_infer.api`, `breeze_infer.batch`, `models.fast_streaming`,
    `models.cudagraph`, `models.stream_runtime`, `models.text_encoder_graph`,
-   `models.warmup_profile`) are intentionally not copied.
+   `models.warmup_profile`) 有意未复制。
 
-### Model weights
+### 模型权重
 
-Model weights, `audio_tokenizer/` codec weights and `qwen-tts` are **not**
-vendored. They are loaded at runtime from a model directory supplied with
-`--model` or `BTTS_MODEL_DIR`, under the BreezeBlue Research and
-Non-Commercial License. See `README.md` for the license notice.
+模型权重、`audio_tokenizer/` codec 权重和 `qwen-tts` **不会**被 vendored。
+它们在运行时从 `--model` 或 `BTTS_MODEL_DIR` 指定的模型目录加载，受
+BreezeBlue Research and Non-Commercial License 约束。许可证声明见 `README.md`。
 
-## Python dependencies
+## Python 依赖
 
-Runtime dependencies are listed in `pyproject.toml`. They retain their own
-licenses; this project does not redistribute them.
+运行时依赖列在 `pyproject.toml` 中。各依赖保留自己的许可证；本项目不再分发它们。
