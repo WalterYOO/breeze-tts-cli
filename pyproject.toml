@@ -1,0 +1,88 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "breeze-tts-cli"
+version = "0.1.0"
+description = "Voice design workbench and reproducible local runner for Breeze TTS 2 (research / non-commercial)."
+readme = "README.md"
+requires-python = ">=3.10,<3.13"
+license = "Apache-2.0"
+license-files = [
+  "LICENSE",
+  "THIRD_PARTY_NOTICES.md",
+  "src/btts_cli/_vendor/breeze_tts/LICENSE",
+]
+authors = [{ name = "breeze-tts-cli contributors" }]
+keywords = ["tts", "voice-design", "breeze", "mps", "cli"]
+classifiers = [
+  "License :: OSI Approved :: Apache Software License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+  "click>=8.1,<9",
+  "pydantic>=2.8,<3",
+  "PyYAML>=6,<7",
+  "rich>=13.7,<15",
+  "platformdirs>=4,<5",
+  "filelock>=3.15,<4",
+  "soundfile>=0.13",
+  "numpy>=2,<3",
+  "Jinja2>=3.1,<4",
+]
+
+[project.optional-dependencies]
+mps = [
+  "torch==2.9.1",
+  "torchaudio==2.9.1",
+  "transformers==4.57.3",
+  "qwen-tts==0.1.1",
+  "huggingface-hub>=0.34,<1",
+]
+metrics = [
+  "librosa>=0.10",
+  "praat-parselmouth>=0.4",
+]
+dev = [
+  "pytest>=8",
+  "pytest-cov>=5",
+  "ruff>=0.12",
+  "build>=1.2",
+  "hatchling>=1.21",
+  "mypy>=1.11",
+]
+
+[project.scripts]
+btts_cli = "btts_cli.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/btts_cli"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"THIRD_PARTY_NOTICES.md" = "THIRD_PARTY_NOTICES.md"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+markers = [
+  "mps: integration test that loads the real model on Apple MPS (set BTTS_RUN_MPS=1)",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+exclude = ["src/btts_cli/_vendor"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["B008"]
+
+[tool.mypy]
+python_version = "3.10"
+ignore_missing_imports = true
+warn_unused_ignores = true
+exclude = ["src/btts_cli/_vendor"]

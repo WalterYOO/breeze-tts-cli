@@ -1,0 +1,65 @@
+{
+  "files": {
+    "LICENSE": {
+      "source_sha256": "c8858a5a76440bbca484e134cf7df46385d090dd18b2c58e650f939258802e5b",
+      "vendored_sha256": "c8858a5a76440bbca484e134cf7df46385d090dd18b2c58e650f939258802e5b"
+    },
+    "breeze_infer/__init__.py": {
+      "source_sha256": "810141b5e6326542cced736e82763c37300f9de2b531f3ab97921a1aca32328d",
+      "vendored_sha256": "a1810d5cdbfa0e2d0083c80fa4941dc2b14539d185babe23a8021b7872f43706"
+    },
+    "breeze_infer/audio.py": {
+      "source_sha256": "3dc7977d8b1f3097918d4164e5607c20d99491877f3c4723649a36724713cff4",
+      "vendored_sha256": "c2e3fc424d329fc184352ce0486831919363df33aa7e90992d6888e96bd10327"
+    },
+    "breeze_infer/runtime.py": {
+      "source_sha256": "a257d868b867009edddd8ba53b22d3b66394057801c62f198879b1c992637ab9",
+      "vendored_sha256": "6963cf7cdc998246d9e936a6bed609bb150d3c5658072f18f29b0aa738998f0b"
+    },
+    "breeze_infer/templates.py": {
+      "source_sha256": "52057796b74b95e34adf7238cb07ed1484941a5f6c168760632ac54a0bd0ca06",
+      "vendored_sha256": "f3e3a6cd96daa5d2e1724121b83c89c0df1a4d06bd8a24ce56bb58db1c7aa146"
+    },
+    "models/__init__.py": {
+      "source_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "vendored_sha256": "cde2c7f14643509c83e036b1d1943fd2abb9612069b429898b24c94f9f4b84bd"
+    },
+    "models/breeze.py": {
+      "source_sha256": "9c408b2323f1fb57f7ddc4217cc72e4d9fce82cbf287a0d2ae4578e63f204cc2",
+      "vendored_sha256": "76f48bb90ba99bd556a5b3ad478c6dc84eeb0dec85f882e2f025ccb4a229b116"
+    },
+    "models/breeze_backbone_factory.py": {
+      "source_sha256": "8d8519dccb82f5363d4e4ff64f182906a0f93dd5853619547b54c89ff22f17ef",
+      "vendored_sha256": "827fabf8e9d1e0f899342fff0ed825d460f78a4e8e592c590b55f3fe969c62ee"
+    },
+    "models/breeze_base_config.py": {
+      "source_sha256": "6b8aab8979fef27108176d654077e7f1d797a0ca2ed18e6e1460fdf8ab93b7a9",
+      "vendored_sha256": "e045e8fd9af993d5a329cc664325fe556cfdcb03f866cef05acb8b911b546509"
+    },
+    "models/breeze_config.py": {
+      "source_sha256": "f37fc58792ea936d24925254dfbd75eafb47c2ca85db46b0c371b94550a3fb25",
+      "vendored_sha256": "2c1e136a70eae3b9d790280bef1d2c8652363fead0870261c621fc1fe0fc16d8"
+    },
+    "models/generation_breeze.py": {
+      "source_sha256": "fca4c2d134ab1438f63dd7cf7cc1077e2745394db6a90534c9aafcb47c5f9e1f",
+      "vendored_sha256": "616c373226e6b75a3fa1496e16a4d5494c670d4526174920933c4ab57865ef83"
+    },
+    "models/logits_process.py": {
+      "source_sha256": "43bbcc1c85da535aefc757e44716b0e69701c90db660cf14d77da73d31485b9f",
+      "vendored_sha256": "63682e57478e1a44b1d1c2e86e65eb5a5f6e28d95de5b969ce53eaf28a7de03f"
+    },
+    "models/t5gemma2_compat.py": {
+      "source_sha256": "5902c67fdd3ca28bb13508cb139d0ea96594f118763bc5cd4d940e78d1cf92bf",
+      "vendored_sha256": "510fb03d4cbb4a77e84857bfe55bcfa49725c832e32fb393c6b6a4197331d427"
+    }
+  },
+  "license": "Apache-2.0",
+  "ref": "daa6cb2efe5471f09369229f322d20bb956cb3c3",
+  "rewrite_rules": [
+    "from models. -> from btts_cli._vendor.breeze_tts.models.",
+    "from breeze_infer. -> from btts_cli._vendor.breeze_tts.breeze_infer.",
+    "import models. -> import btts_cli._vendor.breeze_tts.models.",
+    "import breeze_infer. -> import btts_cli._vendor.breeze_tts.breeze_infer."
+  ],
+  "upstream": "https://github.com/breezeblue-ai/breeze-tts"
+}

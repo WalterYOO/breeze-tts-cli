@@ -1,0 +1,397 @@
+version: 1
+compiler_version: "1"
+
+defaults:
+  zh: zh-late-night-radio/v1
+  en: en-podcast-host/v1
+
+# Token -> natural-language phrase. Unknown tokens fall back to the raw value
+# with underscores replaced by spaces, and `design lint` reports them.
+vocab:
+  zh:
+    age:
+      teen: 少年
+      child: 儿童
+      "20s": 二十多岁
+      "30s": 三十多岁
+      "40s": 四十多岁
+      "50s": 五十多岁
+      "60s": 六十多岁
+      senior: 老年
+    gender:
+      female: 女性
+      male: 男性
+      neutral: 中性
+    pitch:
+      low: 偏低
+      low_mid: 中低
+      mid: 中等
+      high_mid: 中高
+      high: 偏高
+    pace:
+      slow: 缓慢
+      medium_slow: 中慢
+      medium: 中等
+      medium_fast: 中快
+      fast: 偏快
+    energy:
+      low: 低
+      medium_low: 中低
+      medium: 中等
+      medium_high: 中高
+      high: 高
+    proximity:
+      close_mic: 贴近麦克风
+      mid_distance: 中等距离
+      far_field: 远场
+    room:
+      dry_studio: 干燥的录音棚
+      treated_room: 做过声学处理的房间
+      natural_room: 自然房间
+    timbre:
+      warm: 温暖
+      clean: 干净
+      slightly_husky: 略带沙哑
+      bright: 明亮
+      dark: 偏暗
+      breathy: 带气声
+      nasal: 带鼻音
+      smooth: 顺滑
+      crisp: 清脆
+      soft: 柔和
+      metallic: 有金属感
+      deep: 深沉
+    articulation:
+      clear: 清晰
+      relaxed: 放松
+      precise: 精准
+      lazy: 慵懒
+      crisp: 干净利落
+      soft: 轻柔
+    tone:
+      calm: 平静
+      intimate: 亲密
+      warm: 温暖
+      cool: 冷静
+      playful: 俏皮
+      serious: 严肃
+      gentle: 温柔
+      wry: 略带调侃
+    persona:
+      late_night_host: 深夜电台主持人
+      documentary_narrator: 纪录片旁白
+      anime_character: 动画角色
+      podcast_host: 播客主持人
+      audiobook_narrator: 有声书旁白
+      game_character: 游戏角色
+    avoid:
+      childlike: 儿童感
+      shouting: 喊叫
+      robotic: 机械感
+      overly_bright: 过亮
+      monotone: 单调
+  en:
+    age:
+      teen: teenage
+      child: child
+      "20s": in their twenties
+      "30s": in their thirties
+      "40s": in their forties
+      "50s": in their fifties
+      "60s": in their sixties
+      senior: elderly
+    gender:
+      female: female
+      male: male
+      neutral: androgynous
+    pitch:
+      low: low
+      low_mid: low-mid
+      mid: mid
+      high_mid: high-mid
+      high: high
+    pace:
+      slow: slow
+      medium_slow: medium-slow
+      medium: medium
+      medium_fast: medium-fast
+      fast: fast
+    energy:
+      low: low
+      medium_low: medium-low
+      medium: medium
+      medium_high: medium-high
+      high: high
+    proximity:
+      close_mic: close-mic
+      mid_distance: mid-distance
+      far_field: far-field
+    room:
+      dry_studio: dry studio
+      treated_room: treated room
+      natural_room: natural room
+    timbre:
+      warm: warm
+      clean: clean
+      slightly_husky: slightly husky
+      bright: bright
+      dark: dark
+      breathy: breathy
+      nasal: nasal
+      smooth: smooth
+      crisp: crisp
+      soft: soft
+      metallic: metallic
+      deep: deep
+    articulation:
+      clear: clear
+      relaxed: relaxed
+      precise: precise
+      lazy: lazy
+      crisp: crisp
+      soft: soft
+    tone:
+      calm: calm
+      intimate: intimate
+      warm: warm
+      cool: cool
+      playful: playful
+      serious: serious
+      gentle: gentle
+      wry: wry
+    persona:
+      late_night_host: late-night radio host
+      documentary_narrator: documentary narrator
+      anime_character: animation character
+      podcast_host: podcast host
+      audiobook_narrator: audiobook narrator
+      game_character: game character
+    avoid:
+      childlike: childlike
+      shouting: shouting
+      robotic: robotic
+      overly_bright: overly bright
+      monotone: monotone
+
+templates:
+  zh-late-night-radio/v1:
+    language: zh
+    label: 深夜电台
+    description: 近距离、低能量、亲密语气的深夜主持人声线。
+    render: >-
+      {% if identity.age or identity.gender %}用{{ identity.age }}{{ identity.gender }}的声线说话。{% endif %}
+      {% if identity.timbre %}音色{{ identity.timbre }}。{% endif %}
+      {% if identity.pitch %}音高{{ identity.pitch }}。{% endif %}
+      {% if identity.articulation %}吐字{{ identity.articulation }}。{% endif %}
+      {% if identity.persona %}人物气质接近{{ identity.persona }}。{% endif %}
+      {% if delivery.pace or delivery.energy or delivery.tone %}{% if delivery.pace %}语速{{ delivery.pace }}{% endif %}{% if delivery.energy %}{% if delivery.pace %}，{% endif %}能量{{ delivery.energy }}{% endif %}{% if delivery.tone %}{% if delivery.pace or delivery.energy %}，{% endif %}语气{{ delivery.tone }}{% endif %}。{% endif %}
+      {% if scene.proximity %}声音{{ scene.proximity }}。{% endif %}
+      {% if scene.room %}环境是{{ scene.room }}。{% endif %}
+      {% if avoid %}避免{{ avoid }}。{% endif %}
+    default_covers:
+      - 晚上好，欢迎收听今天的节目。
+      - 外面下着雨，我们慢慢聊。
+    starter:
+      identity:
+        age: 30s
+        gender_presentation: female
+        timbre: [warm, clean, slightly_husky]
+        pitch: low_mid
+        articulation: clear, relaxed
+        persona: late_night_host
+      delivery_baseline:
+        pace: medium_slow
+        energy: medium_low
+        tone: calm, intimate
+      scene:
+        proximity: close_mic
+        room: dry_studio
+      avoid: [childlike, shouting]
+      covers:
+        - 晚上好，欢迎收听今天的节目。
+        - 外面下着雨，我们慢慢聊。
+
+  zh-documentary-narrator/v1:
+    language: zh
+    label: 纪录片旁白
+    description: 沉稳、克制、信息密度高的纪录片旁白。
+    render: >-
+      {% if identity.age or identity.gender %}{{ identity.age }}{{ identity.gender }}声线。{% endif %}
+      {% if identity.pitch %}音高{{ identity.pitch }}。{% endif %}
+      {% if identity.timbre %}音色{{ identity.timbre }}。{% endif %}
+      {% if identity.articulation %}吐字{{ identity.articulation }}。{% endif %}
+      {% if identity.persona %}气质是{{ identity.persona }}。{% endif %}
+      {% if delivery.pace or delivery.energy or delivery.tone %}{% if delivery.pace %}语速{{ delivery.pace }}{% endif %}{% if delivery.energy %}{% if delivery.pace %}，{% endif %}能量{{ delivery.energy }}{% endif %}{% if delivery.tone %}{% if delivery.pace or delivery.energy %}，{% endif %}语气{{ delivery.tone }}{% endif %}。{% endif %}
+      {% if scene.proximity %}声音{{ scene.proximity }}。{% endif %}
+      {% if scene.room %}环境是{{ scene.room }}。{% endif %}
+      {% if avoid %}避免{{ avoid }}。{% endif %}
+    default_covers:
+      - 这片土地已经沉睡了千年。
+      - 风从山谷里吹来，带着雪的味道。
+    starter:
+      identity:
+        age: 40s
+        gender_presentation: male
+        timbre: [deep, smooth]
+        pitch: low
+        articulation: precise
+        persona: documentary_narrator
+      delivery_baseline:
+        pace: slow
+        energy: low
+        tone: serious
+      scene:
+        proximity: close_mic
+        room: dry_studio
+      avoid: [childlike, overly_bright]
+      covers:
+        - 这片土地已经沉睡了千年。
+        - 风从山谷里吹来，带着雪的味道。
+
+  zh-anime-character/v1:
+    language: zh
+    label: 动画角色
+    description: 明亮、有起伏的动画角色声线。
+    render: >-
+      {% if identity.age or identity.gender %}{{ identity.age }}{{ identity.gender }}角色声线。{% endif %}
+      {% if identity.pitch %}音高{{ identity.pitch }}。{% endif %}
+      {% if identity.timbre %}音色{{ identity.timbre }}。{% endif %}
+      {% if identity.articulation %}吐字{{ identity.articulation }}。{% endif %}
+      {% if identity.persona %}性格气质是{{ identity.persona }}。{% endif %}
+      {% if delivery.pace or delivery.energy or delivery.tone %}{% if delivery.pace %}语速{{ delivery.pace }}{% endif %}{% if delivery.energy %}{% if delivery.pace %}，{% endif %}能量{{ delivery.energy }}{% endif %}{% if delivery.tone %}{% if delivery.pace or delivery.energy %}，{% endif %}语气{{ delivery.tone }}{% endif %}。{% endif %}
+      {% if scene.proximity %}声音{{ scene.proximity }}。{% endif %}
+      {% if scene.room %}环境是{{ scene.room }}。{% endif %}
+      {% if avoid %}不要{{ avoid }}。{% endif %}
+    default_covers:
+      - 你终于来了，我等你好久了。
+      - 别担心，我会一直在你身边。
+    starter:
+      identity:
+        age: 20s
+        gender_presentation: female
+        timbre: [bright, clean]
+        pitch: high_mid
+        articulation: crisp
+        persona: anime_character
+      delivery_baseline:
+        pace: medium_fast
+        energy: medium_high
+        tone: playful
+      scene:
+        proximity: close_mic
+        room: dry_studio
+      avoid: [robotic, monotone]
+      covers:
+        - 你终于来了，我等你好久了。
+        - 别担心，我会一直在你身边。
+
+  en-podcast-host/v1:
+    language: en
+    label: Podcast host
+    description: Warm, conversational close-mic podcast delivery.
+    render: >-
+      {% if identity.age or identity.gender %}A {{ identity.gender }} voice{% if identity.age %} {{ identity.age }}{% endif %}.{% endif %}
+      {% if identity.timbre %} Timbre: {{ identity.timbre }}.{% endif %}
+      {% if identity.pitch %} Pitch: {{ identity.pitch }}.{% endif %}
+      {% if identity.articulation %} Articulation: {{ identity.articulation }}.{% endif %}
+      {% if identity.persona %} Persona: {{ identity.persona }}.{% endif %}
+      {% if delivery.pace or delivery.energy or delivery.tone %} Delivery:{% if delivery.pace %} pace {{ delivery.pace }}{% endif %}{% if delivery.energy %}{% if delivery.pace %},{% endif %} energy {{ delivery.energy }}{% endif %}{% if delivery.tone %}{% if delivery.pace or delivery.energy %},{% endif %} tone {{ delivery.tone }}{% endif %}.{% endif %}
+      {% if scene.proximity %} Recorded {{ scene.proximity }}.{% endif %}
+      {% if scene.room %} Room: {{ scene.room }}.{% endif %}
+      {% if avoid %} Avoid {{ avoid }}.{% endif %}
+    default_covers:
+      - Welcome back to the show.
+      - Let's take a moment and slow down.
+    starter:
+      identity:
+        age: 30s
+        gender_presentation: female
+        timbre: [warm, breathy]
+        pitch: low_mid
+        articulation: relaxed
+        persona: podcast_host
+      delivery_baseline:
+        pace: medium
+        energy: medium_low
+        tone: intimate
+      scene:
+        proximity: close_mic
+        room: treated_room
+      avoid: [shouting, robotic]
+      covers:
+        - Welcome back to the show.
+        - Let's take a moment and slow down.
+
+  en-audiobook-narrator/v1:
+    language: en
+    label: Audiobook narrator
+    description: Controlled, low-energy narration for long-form reading.
+    render: >-
+      {% if identity.age or identity.gender %}A {{ identity.gender }} voice{% if identity.age %} {{ identity.age }}{% endif %}.{% endif %}
+      {% if identity.pitch %} Pitch: {{ identity.pitch }}.{% endif %}
+      {% if identity.timbre %} Timbre: {{ identity.timbre }}.{% endif %}
+      {% if identity.articulation %} Articulation: {{ identity.articulation }}.{% endif %}
+      {% if identity.persona %} Persona: {{ identity.persona }}.{% endif %}
+      {% if delivery.pace or delivery.energy or delivery.tone %} Delivery:{% if delivery.pace %} pace {{ delivery.pace }}{% endif %}{% if delivery.energy %}{% if delivery.pace %},{% endif %} energy {{ delivery.energy }}{% endif %}{% if delivery.tone %}{% if delivery.pace or delivery.energy %},{% endif %} tone {{ delivery.tone }}{% endif %}.{% endif %}
+      {% if scene.proximity %} Recorded {{ scene.proximity }}.{% endif %}
+      {% if scene.room %} Room: {{ scene.room }}.{% endif %}
+      {% if avoid %} Avoid {{ avoid }}.{% endif %}
+    default_covers:
+      - The house stood silent at the end of the lane.
+      - She had not spoken to him in years.
+    starter:
+      identity:
+        age: 40s
+        gender_presentation: male
+        timbre: [deep, smooth]
+        pitch: low
+        articulation: precise
+        persona: audiobook_narrator
+      delivery_baseline:
+        pace: slow
+        energy: low
+        tone: calm
+      scene:
+        proximity: close_mic
+        room: dry_studio
+      avoid: [childlike, shouting]
+      covers:
+        - The house stood silent at the end of the lane.
+        - She had not spoken to him in years.
+
+  en-game-character/v1:
+    language: en
+    label: Game character
+    description: Bright, energetic character voice for games and animation.
+    render: >-
+      {% if identity.age or identity.gender %}A {{ identity.gender }} character voice{% if identity.age %} {{ identity.age }}{% endif %}.{% endif %}
+      {% if identity.pitch %} Pitch: {{ identity.pitch }}.{% endif %}
+      {% if identity.timbre %} Timbre: {{ identity.timbre }}.{% endif %}
+      {% if identity.articulation %} Articulation: {{ identity.articulation }}.{% endif %}
+      {% if identity.persona %} Personality: {{ identity.persona }}.{% endif %}
+      {% if delivery.pace or delivery.energy or delivery.tone %} Delivery:{% if delivery.pace %} pace {{ delivery.pace }}{% endif %}{% if delivery.energy %}{% if delivery.pace %},{% endif %} energy {{ delivery.energy }}{% endif %}{% if delivery.tone %}{% if delivery.pace or delivery.energy %},{% endif %} tone {{ delivery.tone }}{% endif %}.{% endif %}
+      {% if scene.proximity %} Recorded {{ scene.proximity }}.{% endif %}
+      {% if scene.room %} Room: {{ scene.room }}.{% endif %}
+      {% if avoid %} Do not sound {{ avoid }}.{% endif %}
+    default_covers:
+      - You made it. I was starting to worry.
+      - Stay close. This place is not safe.
+    starter:
+      identity:
+        age: 20s
+        gender_presentation: neutral
+        timbre: [bright, crisp]
+        pitch: high_mid
+        articulation: crisp
+        persona: game_character
+      delivery_baseline:
+        pace: medium_fast
+        energy: medium_high
+        tone: playful
+      scene:
+        proximity: mid_distance
+        room: natural_room
+      avoid: [monotone, robotic]
+      covers:
+        - You made it. I was starting to worry.
+        - Stay close. This place is not safe.

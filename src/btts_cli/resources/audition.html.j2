@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Audition · {{ run_id }}</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #111417;
+    --panel: #191e23;
+    --line: #2b333b;
+    --text: #e7edf3;
+    --muted: #93a1ae;
+    --accent: #7cc4ff;
+    --warn: #ffcf70;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 2rem;
+    background: var(--bg); color: var(--text);
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  header { max-width: 980px; margin: 0 auto 1.5rem; }
+  h1 { margin: 0 0 .4rem; font-size: 1.5rem; letter-spacing: .02em; }
+  .meta { color: var(--muted); font-size: .86rem; }
+  .instruction {
+    max-width: 980px; margin: 0 auto 1.25rem; padding: .9rem 1rem;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    color: var(--muted);
+  }
+  .toolbar {
+    max-width: 980px; margin: 0 auto 1rem;
+    display: flex; gap: .75rem; align-items: center; flex-wrap: wrap;
+  }
+  button {
+    background: var(--panel); color: var(--text); border: 1px solid var(--line);
+    border-radius: 8px; padding: .45rem .8rem; cursor: pointer; font: inherit;
+  }
+  button:hover { border-color: var(--accent); }
+  .grid {
+    max-width: 980px; margin: 0 auto;
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1rem;
+  }
+  .card {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+    padding: 1rem;
+  }
+  .card header {
+    display: flex; justify-content: space-between; align-items: baseline;
+    margin: 0 0 .6rem; max-width: none;
+  }
+  .label { font-size: 1.4rem; font-weight: 700; color: var(--accent); }
+  .take { color: var(--muted); font-size: .8rem; }
+  audio { width: 100%; margin: .4rem 0 .6rem; }
+  dl {
+    display: grid; grid-template-columns: auto 1fr; gap: .15rem .6rem;
+    margin: 0; font-size: .82rem;
+  }
+  dt { color: var(--muted); }
+  dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+  .blind .take, .blind .detail { visibility: hidden; }
+  .blind .card:hover .detail { visibility: visible; }
+  .notes { max-width: 980px; margin: 1.5rem auto 0; color: var(--muted); font-size: .82rem; }
+  .notes code { color: var(--text); }
+  .warn { color: var(--warn); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Blind audition · {{ name }}</h1>
+  <div class="meta">
+    run <code>{{ run_id }}</code> · template <code>{{ template_name }}</code> ·
+    metrics <code>{{ metrics_level }}</code> · model <code>{{ model_digest }}</code> ·
+    generated {{ generated_at }}
+  </div>
+</header>
+
+<div class="instruction">{{ instruction }}</div>
+
+<div class="toolbar">
+  <button id="blind-toggle" type="button">Hide take details (blind)</button>
+  <span class="meta">Space = play/pause focused card · Click a card to focus</span>
+</div>
+
+<div class="grid" id="grid">
+{% for candidate in candidates %}
+  <section class="card" tabindex="0" data-label="{{ candidate.label }}">
+    <header>
+      <span class="label">{{ candidate.label }}</span>
+      <span class="take detail">{{ candidate.take_id }} · seed {{ candidate.seed }} · cfg {{ candidate.cfg_scale }}</span>
+    </header>
+    <audio controls preload="none" src="{{ candidate.audio }}"></audio>
+    <dl class="detail">
+      <dt>duration</dt><dd>{{ candidate.duration_s }} s</dd>
+      <dt>peak</dt><dd>{{ candidate.peak_dbfs }} dBFS</dd>
+      <dt>rms</dt><dd>{{ candidate.rms_dbfs }} dBFS</dd>
+      <dt>clipping</dt><dd>{{ candidate.clipping_ratio }}</dd>
+      <dt>silence</dt><dd>{{ candidate.silence_ratio }}</dd>
+      <dt>F0 median</dt><dd>{{ candidate.f0_median_hz }} Hz</dd>
+      <dt>HNR</dt><dd>{{ candidate.hnr_db }} dB</dd>
+      <dt>centroid</dt><dd>{{ candidate.spectral_centroid_hz }} Hz</dd>
+    </dl>
+  </section>
+{% endfor %}
+</div>
+
+<div class="notes">
+  <p>
+    Metrics help eliminate technical failures and sort candidates. They are not an
+    aesthetic score: choose the final take by ear, then freeze it with
+    <code>btts_cli design freeze</code>.
+  </p>
+  {% if skipped %}
+  <p class="warn">Incomplete takes skipped:
+    {% for take, reason in skipped %}{{ take }} ({{ reason }}){% if not loop.last %}, {% endif %}{% endfor %}
+  </p>
+  {% endif %}
+  {% if warnings %}
+  <p class="warn">Warnings:
+    {% for warning in warnings %}{{ warning }}{% if not loop.last %}; {% endif %}{% endfor %}
+  </p>
+  {% endif %}
+  <p class="warn">{{ license_notice }}</p>
+</div>
+
+<script>
+  const grid = document.getElementById('grid');
+  const toggle = document.getElementById('blind-toggle');
+  let blind = false;
+
+  toggle.addEventListener('click', () => {
+    blind = !blind;
+    grid.classList.toggle('blind', blind);
+    toggle.textContent = blind ? 'Show take details' : 'Hide take details (blind)';
+  });
+
+  grid.addEventListener('keydown', (event) => {
+    if (event.code !== 'Space') return;
+    const audio = event.target.querySelector ? event.target.querySelector('audio') : null;
+    if (!audio) return;
+    event.preventDefault();
+    if (audio.paused) audio.play(); else audio.pause();
+  });
+</script>
+</body>
+</html>
