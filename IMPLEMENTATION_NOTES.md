@@ -2,6 +2,23 @@
 
 Scope: PRD v0.2 sections 3–9 (P0). P1/P2 features are intentionally absent.
 
+## Status (2026-11-03)
+
+- P0 is implemented and committed as `fb48022 feat: implement btts_cli P0`
+  (parent commit `4b849a4 docs: add btts_cli PRD v0.2`).
+- Independent review by Codex ran twice:
+  - Round 1: **FAIL** — 7 Must-fix items (path traversal, take-id traversal,
+    resume mixing models, clone transcript display, bracket events, `say`
+    lint bypass, `doctor --json` stdout).
+  - Round 2: **FAIL** — the original 7 were confirmed closed, but M8
+    (`doctor --bench --json` polluted by vendored prints) and M9 (generation
+    exceptions escaping as exit 1) were found.
+  - Final targeted re-check after M8/M9 fixes: **PASS**.
+- Current verification: `ruff check .` clean; `pytest -q` **85 passed,
+  1 skipped**; `BTTS_RUN_MPS=1 pytest -m mps` **1 passed** on this machine;
+  real `doctor --bench --json` stdout parses as strict JSON.
+- No git remote is configured; the commits exist only in the local repository.
+
 ## Environment
 
 - Interpreter: `../breeze-tts/.venv/bin/python` (Python 3.12.11)
@@ -55,7 +72,7 @@ BTTS_MODEL_DIR=../breeze-tts/ms-models/Breeze-TTS-2 \
 
 - `ruff check .`: all checks passed.
 - Default `pytest -q`: **85 passed, 1 skipped** (MPS test skipped).
-- `BTTS_RUN_MPS=1 pytest -q -m mps`: **1 passed** in 52.84s.
+- `BTTS_RUN_MPS=1 pytest -q -m mps`: **1 passed** in ~46–53s (repeat runs).
 - Wheel test builds a real wheel and asserts no `*.safetensors`, no
   `audio_tokenizer/`, no `ms-models/`, and that the extracted wheel starts
   `btts_cli --help` without importing torch.
@@ -105,8 +122,10 @@ flash-attn. Neither is required by the eager MPS path.
 
 ## Review fixes
 
-Codex review verdict was FAIL. All Must-fix items and Should-fix 1/2/3/9 are
-fixed, each with regression tests.
+Two independent Codex review rounds ended in FAIL. Round 1 produced M1–M7;
+round 2 confirmed those closed and produced M8–M9. All Must-fix items and
+Should-fix 1/2/3/9 are fixed, each with regression tests. The final targeted
+re-check returned PASS.
 
 | Item | Fix | Regression tests |
 |---|---|---|
@@ -124,22 +143,69 @@ fixed, each with regression tests.
 | M9 | New shared `generate_or_raise_engine_error()` preserves `BttsError`/`KeyboardInterrupt` and maps other generation exceptions to `EngineError`. Both `say` and `design explore` use it; failures exit 3 with a readable stage + underlying error, no traceback, and no partial WAV/recipe. A failed explore take is never added to `completed`. | `test_engine_errors.py::test_say_generation_failure_exits_engine_error`, `::test_explore_generation_failure_exits_engine_error`, `::test_generation_helper_preserves_domain_and_interrupt_errors` |
 | S9 | README quick start uses `c001` (default 4-take matrix). Removed the false `design lint --json` claim from these notes. | Documentation only |
 
-## Known gaps
+## Remaining work
 
-- No batch/long-form synthesis, streaming, HTTP API, model download, or voice
-  deletion — all P1/P2.
-- Full metrics depend on optional `librosa`/`parselmouth`; without them only
-  the basic numpy/soundfile metrics are computed, with an explicit notice.
-- The quality report is descriptive, not aesthetic: it cannot judge
-  naturalness or likeness.
+### P0.1 — review follow-ups (non-blocking, not in `fb48022`)
+
+1. **`VoiceStore.save()` is not a directory-level atomic replace** —
+   `src/btts_cli/domain/voice.py:249`. Files are written atomically one by one
+   with `profile.json` last, so a crash can leave a mixed directory, and
+   `--force` switching design↔clone leaves stale files (`design.yaml` or
+   `ref.wav`/`ref.txt`). Build a sibling temporary directory, fsync, then
+   rename it over the old one, or explicitly delete files that conflict with
+   the target kind. Add design→clone→design `--force` tests.
+2. **`interrupted` never resets** — `src/btts_cli/commands/design.py:362`.
+   After an interrupted run is resumed to completion, `run.json.interrupted`
+   stays `true` and disagrees with the report. Set it to `false` when no
+   pending takes remain, normalized on the final manifest write.
+3. **`BTTS_RUN_MPS=1` still skips instead of failing** —
+   `tests/test_mps_integration.py:34,37`. Explicit opt-in should `pytest.fail()`
+   with the actual model directory when MPS or model files are missing; only
+   the unset case should skip.
+4. **Wheel test can be stronger** — `tests/test_wheel_contents.py:41,48`.
+   It asserts the vendored LICENSE but not the dist-info root LICENSE or
+   `THIRD_PARTY_NOTICES.md`, and forbids `.bin` but not `.pt/.pth/.ckpt/.wav`.
+   The "no torch" assertion still runs in an interpreter where torch is
+   installed; an import blocker would better simulate a base install.
+5. **Vendor sync hard-codes NOTICE absence** —
+   `scripts/sync_breeze_vendor.py:136,230`. The vendored commit has no
+   `NOTICE`, but a future upgrade should detect `NOTICE*`; a missing upstream
+   LICENSE currently writes an empty LICENSE and hash instead of failing.
+6. **Model digest is not a weight-content hash** —
+   `src/btts_cli/engine/base.py:176`. It covers metadata, index/config and
+   shard names/sizes, so a same-size weight swap is undetectable. Documented
+   P0 trade-off; per-shard or full weight hashing is P1.
+7. **WAV and recipe are not one transaction** — each write is atomic, but the
+   pair is not. A crash between them leaves a WAV without a sidecar, which
+   resume treats as corrupt and regenerates. Acceptable, but the docs should
+   not claim a single atomic operation.
+
+### P1/P2 — product scope
+
+- Batch/long-form synthesis, streaming, HTTP API, model download, voice
+  deletion.
+- A persistent MPS worker to amortize the ~7–9s model load (P0 deliberately
+  loads per command; measured load is fast enough for interactive use).
+- Aesthetic and likeness evaluation; the current report is descriptive only.
+- Full metrics require optional `librosa`/`parselmouth`; without them only
+  basic numpy/soundfile metrics are computed, with an explicit notice.
+- Voice-add consent metadata (`profile.consent` exists in the schema but is
+  always `null`; PRD does not yet define the flag).
+
+### Known limits
+
 - MPS performance is measured on this machine only; RTF varies with line
-  length and thermal state.
+  length, thermal state and memory pressure.
 - Clone stability for references under 6s is reduced; the CLI warns rather
   than refusing.
 - Vendoring is pinned to one upstream commit and must be re-run manually for
   upgrades (`scripts/sync_breeze_vendor.py --ref <sha>`).
 - `design lint` is heuristic; unusual but valid descriptors can trigger a
   warning, and a clean lint is not a guarantee of good audio.
+- Bracket-event detection is conservative: a legitimate bracketed aside that
+  contains an event word is rejected rather than risk the model speaking it.
+- The CLI cannot judge whether a design "sounds good"; candidate selection
+  remains a human decision.
 
 ## License
 
