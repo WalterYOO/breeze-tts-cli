@@ -48,6 +48,30 @@ Breeze-TTS-2/
   audio_tokenizer/{config.json,model.safetensors}
 ```
 
+### 下载模型
+
+模型仓库是公开的（`BreezeBlue/breeze-tts-2`，全部文件约 7.68 GB），无需申请权限。`[mps]` 扩展已经包含 `huggingface-hub`：
+
+```bash
+# 方式一：下载到指定目录
+hf download BreezeBlue/breeze-tts-2 --local-dir ms-models/Breeze-TTS-2
+
+# 旧版 CLI 等价命令：
+# huggingface-cli download BreezeBlue/breeze-tts-2 --local-dir ms-models/Breeze-TTS-2
+
+export BTTS_MODEL_DIR="$PWD/ms-models/Breeze-TTS-2"
+```
+
+方式二：交给 Hugging Face 标准缓存管理，再把打印出的路径设为模型目录：
+
+```python
+from huggingface_hub import snapshot_download
+
+print(snapshot_download("BreezeBlue/breeze-tts-2"))
+```
+
+下载内容包含 `audio_tokenizer/`（约 0.68 GB）和两个主权重分片（约 6.96 GB）。P0 暂不提供 `btts_cli model download` 子命令，下载由 `huggingface_hub` 完成。下载即表示接受 BreezeBlue Research and Non-Commercial License 1.1。
+
 ## 快速开始
 
 ```bash
