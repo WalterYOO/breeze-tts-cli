@@ -5,7 +5,7 @@ from __future__ import annotations
 import click
 
 from btts_cli import __version__
-from btts_cli.commands import design, doctor, say, voice
+from btts_cli.commands import design, doctor, model, say, voice
 
 
 @click.group(context_settings={"help_option_names": ["-h", "--help"]})
@@ -15,6 +15,7 @@ def cli() -> None:
 
 
 cli.add_command(doctor.doctor)
+cli.add_command(model.model)
 cli.add_command(design.design)
 cli.add_command(voice.voice)
 cli.add_command(say.say)

@@ -50,19 +50,32 @@ Breeze-TTS-2/
 
 ### 下载模型
 
-模型仓库是公开的（`BreezeBlue/breeze-tts-2`，全部文件约 7.68 GB），无需申请权限。`[mps]` 扩展已经包含 `huggingface-hub`：
+模型仓库是公开的（`BreezeBlue/breeze-tts-2`，全部文件约 7.68 GB），无需申请权限。下载只由 `model download` 显式触发；`doctor`、`design explore`、`say` 等命令永远不会联网或自动更新模型。
 
 ```bash
-# 方式一：下载到指定目录
-hf download BreezeBlue/breeze-tts-2 --local-dir ms-models/Breeze-TTS-2
+# Hugging Face（默认，使用 huggingface-hub；HF_TOKEN 只从环境读取）
+btts_cli model download
 
-# 旧版 CLI 等价命令：
-# huggingface-cli download BreezeBlue/breeze-tts-2 --local-dir ms-models/Breeze-TTS-2
+# ModelScope（只用标准库 urllib，不需要安装 modelscope）
+btts_cli model download --source modelscope
+
+# 指定目录、revision，或非交互执行
+btts_cli model download --to ms-models/Breeze-TTS-2 --revision main --yes
 
 export BTTS_MODEL_DIR="$PWD/ms-models/Breeze-TTS-2"
+
+# 默认检查必需文件、分片和标记中的大小；--deep 重算 SHA-256
+btts_cli model verify
+btts_cli model verify --deep --json
 ```
 
-方式二：交给 Hugging Face 标准缓存管理，再把打印出的路径设为模型目录：
+默认目标目录是 `$BTTS_MODEL_DIR`，否则 `./ms-models/Breeze-TTS-2`。下载前会显示来源、repo、revision、文件数、总大小和许可证；非 TTY 环境必须传 `--yes`；非空目录必须可识别为未完成下载，或传 `--force`（只覆盖同名模型文件，不删除无关文件）。中断后重跑会复用 `.part` 并通过 HTTP `Range` 续传，逐文件校验大小与 SHA-256 后原子替换。完成后写入 `.btts-model.json`（来源、repo、revision、下载时间及每个文件的大小/SHA-256），`doctor` 会显示这些信息。下载即表示接受 BreezeBlue Research and Non-Commercial License 1.1。
+
+如果偏好手动管理 Hugging Face 缓存，仍可使用 `huggingface_hub`：
+
+```bash
+hf download BreezeBlue/breeze-tts-2 --local-dir ms-models/Breeze-TTS-2
+```
 
 ```python
 from huggingface_hub import snapshot_download
@@ -70,7 +83,7 @@ from huggingface_hub import snapshot_download
 print(snapshot_download("BreezeBlue/breeze-tts-2"))
 ```
 
-下载内容包含 `audio_tokenizer/`（约 0.68 GB）和两个主权重分片（约 6.96 GB）。P0 暂不提供 `btts_cli model download` 子命令，下载由 `huggingface_hub` 完成。下载即表示接受 BreezeBlue Research and Non-Commercial License 1.1。
+手动下载不会写 `.btts-model.json`，但 `model verify` 仍可做必需文件/分片完整性检查。
 
 ## 快速开始
 
@@ -109,6 +122,8 @@ btts_cli say "欢迎收听今晚的节目。" --voice @dusk --direction "更轻�
 | 命令 | 用途 |
 |---|---|
 | `doctor [--bench] [--json]` | 检查环境、模型文件、MPS、内存、许可证；可选执行加载 + 短句生成基准 |
+| `model download [--source huggingface\|modelscope] [--repo ID] [--revision REV] [--to DIR] [--force] [--yes] [--json]` | 显式下载或续传 checkpoint，逐文件校验并写完成标记 |
+| `model verify [--model DIR] [--deep] [--json]` | 检查必需文件/分片/大小；`--deep` 重算 SHA-256 |
 | `design init FILE [--template T] [--language zh\|en]` | 写出一份可编辑的 design YAML |
 | `design lint FILE [--show-rendered]` | 离线、确定性的指令就绪度评分（Instruction Readiness Score） |
 | `design explore FILE --out RUN_DIR [--resume] [--wide]` | 生成候选；每个候选原子写入 WAV + recipe sidecar |

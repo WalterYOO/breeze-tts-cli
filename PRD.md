@@ -1,6 +1,6 @@
-# breeze-tts-cli（btts_cli）PRD v0.2
+# breeze-tts-cli（btts_cli）PRD v0.3
 
-> 状态：三项关键决策已锁定，待开工。
+> 状态：P0 已实现（`fb48022`）；v0.3 把模型下载纳入 P0，支持 Hugging Face 与 ModelScope。
 > 模型：Breeze-TTS-2，本地权重 `../breeze-tts/ms-models/Breeze-TTS-2`（7.2GB）。
 > 上游代码基线：`breezeblue-ai/breeze-tts` @ `daa6cb2efe5471f09369229f322d20bb956cb3c3`。
 > 参考同类工具：`../qwen-tts-cli`（借鉴模式，不照搬功能）。
@@ -13,7 +13,8 @@
 |---|---|---|
 | 运行环境 | 以 macOS MPS 为主 | 定位为**离线 / 近实时制作**，不承诺流式、不承诺实时对话 |
 | 推理代码 | 复制进本仓库，不依赖 `../breeze-tts` 路径 | 只 vendor MPS 必需源码；权重与 `qwen-tts` 不进仓库 |
-| P0 范围 | 设计工作台 + freeze + say 三路由 | 砍掉远程后端、批处理、项目锁、自动评分、后台任务系统 |
+| P0 范围 | 设计工作台 + freeze + say 三路由 + 模型下载/校验 | 砍掉远程后端、批处理、项目锁、自动评分、后台任务系统 |
+| 模型获取 | `model download` 支持 Hugging Face 与 ModelScope；`model verify` 离线校验 | 不自动下载、不后台更新；必须显式确认并接受非商业许可 |
 
 **实测依据**
 
@@ -98,7 +99,8 @@ instruction + text + seed + cfg_scale + model digest
 ### 3.1 核心闭环
 
 ```text
-design init → design lint → design explore
+model download（首次）→ model verify → doctor
+→ design init → design lint → design explore
 → design report（指标 + 试听卷 + HTML）
 → design freeze（--as design 或 --as clone）
 → voice add / list / show
@@ -108,6 +110,10 @@ design init → design lint → design explore
 ### 3.2 P0 命令
 
 ```text
+btts_cli model download [--source huggingface|modelscope] [--repo ID]
+                        [--revision REV] [--to DIR] [--force] [--yes] [--json]
+btts_cli model verify [--model DIR] [--deep] [--json]
+
 btts_cli doctor [--bench] [--json]
 
 btts_cli design init FILE
@@ -128,6 +134,7 @@ btts_cli say TEXT --voice @NAME --direction TEXT [--cfg N] [--out FILE] [--play]
 ### 3.3 P0 明确砍掉
 
 - 远程 HTTP 后端、鉴权、远程任务提交；
+- 模型自动更新、后台下载、多镜像测速切换、模型删除/缓存 GC；
 - `breeze_infer.api`、batch API、CUDA fast path；
 - 常驻 worker、后台 job 系统（P1）；
 - 项目锁、`.bvoice` 导入导出、`voice publish`；
@@ -275,6 +282,93 @@ btts_cli design freeze RUN --take c007 --name dusk --as clone --confirm-transcri
 | `say --voice @clone --direction TEXT` | `ref_edit_tata` | 4.0 |
 
 `--play` 语义：生成完整 WAV → 原子落盘 → 成功后调用 macOS `afplay`。不做边生成边播放。播放失败保留文件并返回非零退出码。
+
+### 4.7 模型下载与校验
+
+首次使用必须先获得本地 checkpoint。下载只由显式命令触发：`doctor`、`design explore`、`say` 等命令永远不隐式联网，也不自动更新模型。
+
+#### 4.7.1 命令与默认值
+
+```text
+btts_cli model download [--source huggingface|modelscope] [--repo ID]
+                        [--revision REV] [--to DIR] [--force] [--yes] [--json]
+btts_cli model verify [--model DIR] [--deep] [--json]
+```
+
+| 参数 | 默认值 | 说明 |
+|---|---|---|
+| `--source` | `huggingface` | 可选 `modelscope` |
+| `--repo` | `BreezeBlue/breeze-tts-2` | 两个源使用同一 repo id |
+| `--revision` | HF `main` / ModelScope `master` | 显式传入时两源都使用该 revision |
+| `--to` | `$BTTS_MODEL_DIR`，否则 `./ms-models/Breeze-TTS-2` | 下载目标目录 |
+| `--force` | 关闭 | 允许写入非空目录；只覆盖同名模型文件，不删除其他文件 |
+| `--yes` | 关闭 | 跳过交互确认；非 TTY 环境必须提供 |
+| `--json` | 关闭 | stdout 只输出一个 JSON 文档，进度与诊断写 stderr |
+
+`model verify` 的模型目录解析与其他命令一致：`--model` > `$BTTS_MODEL_DIR` > `./ms-models/Breeze-TTS-2`。
+
+#### 4.7.2 下载源
+
+- **Hugging Face**：通过 `huggingface_hub.snapshot_download()` 下载；自动使用标准缓存逻辑、断点续传和 `HF_TOKEN`（只从环境读取，不写入任何文件或日志）。
+- **ModelScope**：直接使用公开 HTTP API（文件列表 + 单文件下载），只依赖标准库 `urllib`，不要求安装 `modelscope` 包。逐文件使用 API 返回的 `Size` 与 `Sha256` 校验，支持 `Range` 断点续传。
+- 两个源都是公开仓库，无需申请权限；下载即表示接受 BreezeBlue Research and Non-Commercial License 1.1。
+- 同一 repo id 在两个源的目录结构一致，下载后都满足 `REQUIRED_MODEL_FILES` 与 `audio_tokenizer/` 布局。
+
+#### 4.7.3 流程
+
+1. 解析目标目录；若目录非空且不是可识别的未完成下载，要求 `--force`。目标目录及其任何候选子路径不得包含 symlink；解析后的最终路径必须仍位于 `target.resolve()` 内。
+2. 确认前置条件：非 TTY 且没有 `--yes` 时立即返回 exit 2，**不发起网络请求**。
+3. 从远端获取文件清单（路径、大小、哈希），打印许可证、来源、repo、revision、文件数、总大小（约 7.68GB）和目标目录。
+4. TTY 下若未给 `--yes`，在打印清单后交互确认。
+5. 检查磁盘剩余空间 ≥ 总大小的 1.05 倍；不足时 exit 2 并给出所需空间。
+6. 逐文件下载到 `<name>.part`；存在同源 `.part` 时尝试 `Range` 续传；校验大小与 SHA-256 后 `os.replace` 到最终路径。
+7. 全部完成后调用 `missing_model_files()`；缺文件或哈希不符返回 exit 5，不写完成标记。
+8. 写入 `.btts-model.json` 完成标记，删除 incomplete 状态，清理 `.part`，打印摘要。
+
+可识别的未完成下载：存在 `.btts-model.json` 或 `.btts-model.incomplete.json` 且 `source`/`repo`/`revision` 与本次一致，或目录内只有已知模型文件和状态/`.part` 文件。其他非空目录一律视为冲突。
+
+#### 4.7.4 完成标记
+
+`.btts-model.json` 放在模型目录根部，只记录可复现元数据，不含 token、私有 URL 或绝对路径：
+
+```json
+{
+  "schema_version": 1,
+  "source": "modelscope",
+  "repo": "BreezeBlue/breeze-tts-2",
+  "revision": "master",
+  "downloaded_at": "2026-11-03T12:34:56Z",
+  "files": {
+    "config.json": {"size": 10161, "sha256": "57849eb7..."}
+  }
+}
+```
+
+开始写入或覆盖任何模型文件前，必须先写入 `.btts-model.incomplete.json`（`source`、`repo`、`revision`、`started_at`、可选 `error`），再原子删除旧完成标记。只有全部文件校验通过后才写入新完成标记，最后删除 incomplete。任何失败都保留 incomplete 状态：`doctor` 必须给出警告，`model verify`（浅层和 `--deep`）必须报告 `complete=false`，不能因为文件数量/大小齐全而误判。若有效完成标记与残留 incomplete 并存，以完成标记为准，`doctor` 给出 stale 状态提示。失败清理时，远端没有 SHA-256 且旧完成标记也无法证明其哈希的同尺寸文件必须删除，避免续传时把同尺寸错误文件当成已完成。incomplete 标记不含绝对路径、token 或私有 URL。
+
+`doctor` 读取完成标记或 incomplete 状态并显示来源/revision/下载时间；若标记存在但 `missing_model_files()` 非空，或存在 incomplete 状态，给出“未完成下载，请重跑 model download”的警告。`doctor` 不联网。
+
+#### 4.7.5 `model verify`
+
+- 默认：检查必需文件、分片是否齐全且非空；若存在 incomplete 状态（且无有效完成标记），报告 `complete=false`；若有完成标记，再核对标记中的文件大小。
+- `--deep`：重新计算所有模型文件的 SHA-256 并与完成标记比对；无标记且无 incomplete 状态时只做完整性检查。
+- exit 0 完整；exit 5 缺失/哈希不符；exit 2 用法错误。
+- `--json` 输出字段：`model_dir`、`complete`、`missing`、`files_checked`、`deep`、`digest`、`source`、`repo`、`revision`、`downloaded_at`、`warnings`。
+
+#### 4.7.6 错误与退出码
+
+| 情况 | 退出码 |
+|---|---|
+| 参数错误、非 TTY 缺 `--yes`、磁盘不足、目录冲突 | 2 |
+| 网络、provider API、写入失败（统一包装为可读错误，无 traceback） | 3 |
+| 下载后校验失败、`model verify` 不通过 | 5 |
+
+#### 4.7.7 测试要求
+
+- 单元测试不下载 7.7GB：HF 用 monkeypatch 的 `snapshot_download`，ModelScope 用本地 `http.server` 提供小型假仓库。
+- 覆盖：成功下载并写标记、断点续传、SHA-256 不符、缺文件、非空目录拒绝/`--force`、非 TTY 缺 `--yes`、磁盘不足、`--json` stdout 严格可解析、`model` 命令不导入 torch。
+- 安全：目标目录内目录 symlink、最终文件 symlink、目标本身为 symlink、目标路径中的 symlink loop；直接调用 `download_model()` 传入 `../`/绝对路径；`--force` 刷新失败后旧 marker 必须失效；incomplete 状态必须让 `doctor` 告警且浅层/深层 verify 均 `complete=false`；远端无 SHA-256 时失败留下的同尺寸文件必须删除或标记不可信；`mkdir`/写入/`os.replace` 的 `OSError` 统一映射到 exit 3。
+- 至少一条针对真实 ModelScope/HF 文件列表 API 的在线测试，显式开关（如 `BTTS_RUN_DOWNLOAD=1`），默认 skip。
 
 ---
 
@@ -554,6 +648,7 @@ breeze-tts-cli/
 │   ├── commands/
 │   │   ├── doctor.py
 │   │   ├── design.py
+│   │   ├── model.py
 │   │   ├── say.py
 │   │   └── voice.py
 │   ├── engine/
@@ -561,6 +656,7 @@ breeze-tts-cli/
 │   │   └── mps.py
 │   ├── domain/
 │   │   ├── design.py
+│   │   ├── model.py
 │   │   ├── recipe.py
 │   │   ├── run.py
 │   │   └── voice.py
@@ -584,6 +680,7 @@ breeze-tts-cli/
     ├── test_cli.py
     ├── test_design.py
     ├── test_freeze.py
+    ├── test_model.py
     ├── test_say_routes.py
     ├── test_resume.py
     └── test_wheel_contents.py
@@ -597,7 +694,9 @@ breeze-tts-cli/
 - `rich`：进度和 ETA；
 - `platformdirs`、`filelock`；
 - `soundfile`、`numpy`；
-- `Jinja2`：离线 audition HTML。
+- `Jinja2`：离线 audition HTML；
+- `huggingface-hub`：Hugging Face 下载与断点续传。纯 Python，不引入 torch；
+- ModelScope 下载只用标准库 `urllib`，不新增 `modelscope` 依赖。
 
 不把 torch / transformers / qwen-tts 放进基础依赖。
 
@@ -680,6 +779,11 @@ packages = ["src/btts_cli"]
 13. 使用 fake engine 的单元测试不依赖 MPS；至少一项真实 MPS 集成测试覆盖模型加载和三条路由。
 14. sidecar / profile / manifest 不出现 token、私有 URL、绝对路径；所有输出采用临时文件 + rename。
 15. README、`doctor`、`voice add` 明确提示模型与自托管输出的非商业许可。
+16. `model download --source huggingface|modelscope` 能把公开 checkpoint 下载到目标目录，逐文件校验 SHA-256，写 `.btts-model.json`，并让 `doctor` / `model verify` 通过。
+17. 下载前显示来源、repo、revision、文件数和总大小；非 TTY 缺少 `--yes` 返回 exit 2 且不发起网络请求；磁盘不足、非空冲突目录返回 exit 2。
+18. 中断后重跑可断点续传；大小或 SHA-256 不符返回 exit 5；失败后 `.btts-model.incomplete.json` 使 `doctor` 告警且 verify 不通过，成功后才删除；`--force` 不删除目标目录中的无关文件。
+19. `model verify --json` 与 `model download --json` 的成功路径 stdout 都可被严格 JSON 解析；失败时 stdout 保持为空或单一 JSON，错误只写 stderr；`model` 命令不导入 torch。
+20. HF 下载使用 `huggingface-hub`；ModelScope 下载不要求安装 `modelscope` 包。
 
 ---
 
@@ -722,13 +826,19 @@ packages = ["src/btts_cli"]
 | 指标被误当审美裁判 | 选出技术指标好但听感差的 take | 指标只用于淘汰/排序；最终由人决定 |
 | 上游代码漂移 | vendored 代码与上游分叉 | `vendor.lock.json` + 同步脚本 + 显式升级 |
 | 生成音频转写不精确 | clone 参考文本与音频不一致 | `--as clone` 必须人工确认；P1 可选 ASR 辅助 |
+| 模型下载网络中断/镜像不可用 | 首次使用被阻塞 | 逐文件 `.part` + Range 续传；HF/ModelScope 双源；错误 exit 3 并给出可重试提示 |
+| 下载 7.7GB 占满磁盘 | 下载失败或系统异常 | 下载前检查剩余空间（≥1.05 倍），不足直接 exit 2 |
+| 下载内容与许可被误解 | 用户误以为可商用 | 下载前打印来源、大小与非商业许可；确认后才联网 |
+| 镜像文件被替换/损坏 | 加载失败或行为异常 | ModelScope 逐文件 `Sha256`、HF `huggingface-hub` 校验；`model verify --deep` 可重算 |
 
 ---
 
 ## 12. 下一步
 
-1. 搭 `pyproject.toml` + `src/btts_cli` 骨架 + vendored 包；
-2. 先实现 vendored 引擎与 `doctor --bench`；
-3. 再实现 `design init/lint/explore`；
-4. 然后 `design report` / `design freeze` / `voice` / `say`；
-5. 每一步用 fake engine 单测 + 一次真实 MPS smoke。
+P0 主体已完成并通过 Codex 终审（见 `IMPLEMENTATION_NOTES.md`）。v0.3 追加：
+
+1. 实现 `model verify`（离线完整性 + 可选 `--deep` 哈希）；
+2. 实现 `model download --source huggingface`（`huggingface-hub`，断点续传）；
+3. 实现 `model download --source modelscope`（标准库 HTTP，逐文件 SHA-256）；
+4. 接入 `doctor` 的下载来源与未完成下载提示；
+5. fake provider / 本地 HTTP 单测 + 受限在线测试，再由 Codex 复审后提交。

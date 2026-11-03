@@ -14,6 +14,7 @@ def test_help_works(run) -> None:
     assert result.exit_code == 0
     assert "design" in result.output
     assert "doctor" in result.output
+    assert "model" in result.output
     assert "say" in result.output
     assert "voice" in result.output
 

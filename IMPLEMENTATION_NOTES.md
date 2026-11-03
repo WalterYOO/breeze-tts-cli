@@ -1,6 +1,6 @@
 # 实现说明 — btts_cli P0
 
-范围：PRD v0.2 第 3–9 节（P0）。P1/P2 功能有意未实现。
+范围：PRD v0.3 第 3–9 节（P0），含 4.7 模型下载与校验。P1/P2 功能有意未实现。
 
 ## 状态（2026-11-03）
 
@@ -14,10 +14,24 @@
     （`doctor --bench --json` 被 vendored 代码的输出污染）与 M9
     （生成阶段异常以 exit 1 逃逸）。
   - M8/M9 修复后的最终定向复核：**PASS**。
-- 当前验证状态：`ruff check .` 通过；`pytest -q` **85 passed, 1 skipped**；
+- v0.3 的 `model download` / `model verify` 已实现（尚未提交）：Hugging Face
+  与 ModelScope 两个 provider、`.part`/Range 续传、SHA-256、完成标记、
+  `doctor` 标记展示与在线测试开关。
+- 第三轮复审（model download/verify）：**FAIL**，发现 M10–M13（symlink
+  越界、domain 入口未重新规范化、`--force` 失败保留旧 marker、`OSError`
+  逃逸为 exit 1）。四项均已修复并补回归测试。
+- 第四轮定向复审：**FAIL**，发现 M14（目标路径 symlink loop 抛
+  `RuntimeError`，CLI exit 1）与 M15（远端无 SHA-256 时失败可留下同尺寸
+  错误文件，`doctor`/浅层与深层 verify 均误报完整）。两项已修复并补回归
+  测试：symlink loop 映射为 `IntegrityError`；下载期间写
+  `.btts-model.incomplete.json`，失败后 `doctor` 告警且两种 verify 都拒绝
+  报告完整，同时删除无法由本次清单或旧 marker 证明的无 SHA 文件。
+- 当前验证状态：`ruff check .` 通过；`pytest -q` **118 passed, 2 skipped**；
+  `BTTS_RUN_DOWNLOAD=1 pytest tests/test_model.py` **34 passed**；
   `BTTS_RUN_MPS=1 pytest -m mps` 在本机 **1 passed**；真实
   `doctor --bench --json` 的 stdout 可被严格 JSON 解析。
-- 未配置 git remote；提交仅存在于本地仓库。
+- 仓库已配置 `origin` 并推送至公开 GitHub 仓库；本地 `main` 与
+  `origin/main` 同步（模型下载功能尚待本次提交）。
 
 ## 运行环境
 
@@ -36,7 +50,9 @@ uv pip install --python ../breeze-tts/.venv/bin/python -e ".[dev]"
 
 | 命令 | 行为 |
 |---|---|
-| `doctor [--bench] [--json] [--model] [--device]` | 检查环境、模型文件/digest、torch/MPS、内存、可选真实基准、许可证。普通检查 exit 0；`--bench` 失败 exit 3。 |
+| `doctor [--bench] [--json] [--model] [--device]` | 检查环境、模型文件/digest、torch/MPS、内存、可选真实基准、许可证；读取 `.btts-model.json`，不联网。普通检查 exit 0；`--bench` 失败 exit 3。 |
+| `model download [--source] [--repo] [--revision] [--to] [--force] [--yes] [--json]` | 显式下载模型；非 TTY 缺 `--yes`/磁盘不足/目录冲突 exit 2。HF 用 `snapshot_download`；ModelScope 用标准库 `urllib`，逐文件 `.part` + Range 续传 + Size/SHA-256 校验 + 原子替换。成功后写 `.btts-model.json`。 |
+| `model verify [--model] [--deep] [--json]` | 默认检查必需文件、分片非空和标记中的大小；`--deep` 重算标记文件的 SHA-256。完整 exit 0，否则 exit 5。 |
 | `design init` | 从模板注册表（6 个模板）写出可编辑的 v1 design YAML。`--force` 覆盖。 |
 | `design lint` | 五个维度、block/warn 规则、`--show-rendered`。lint 阻断 exit 1，schema/用法错误 exit 2。 |
 | `design explore` | 默认 4 个候选（2 seeds × 2 cfgs），`--wide` 为 8 个。支持显式 `--seeds`/`--cfgs`。矩阵超过 16 个需要 `--yes`。WAV 与 recipe 依次原子写入，每个候选后更新 manifest。SIGINT 在当前候选结束后停止。`--resume` 只补齐缺失/哈希不匹配的候选。 |
@@ -57,6 +73,14 @@ uv pip install --python ../breeze-tts/.venv/bin/python -e ".[dev]"
 ../breeze-tts/.venv/bin/python -m ruff check .
 ../breeze-tts/.venv/bin/python -m pytest -q
 
+# 可选的在线文件清单测试（默认 skip）
+BTTS_RUN_DOWNLOAD=1 \
+../breeze-tts/.venv/bin/python -m pytest -q tests/test_model.py::test_modelscope_online_manifest
+
+# 用已有 checkpoint 做完整性校验
+../breeze-tts/.venv/bin/btts_cli model verify \
+  --model ../breeze-tts/ms-models/Breeze-TTS-2 --json
+
 # vendor 漂移检查
 ../breeze-tts/.venv/bin/python scripts/sync_breeze_vendor.py --check
 
@@ -69,8 +93,12 @@ BTTS_MODEL_DIR=../breeze-tts/ms-models/Breeze-TTS-2 \
 ## 测试结果
 
 - `ruff check .`：全部通过。
-- 默认 `pytest -q`：**85 passed, 1 skipped**（跳过的是 MPS 测试）。
+- 默认 `pytest -q`：**118 passed, 2 skipped**（跳过 MPS 与在线下载测试）。
+- `BTTS_RUN_DOWNLOAD=1 pytest tests/test_model.py::test_modelscope_online_manifest`：
+  **1 passed**；真实 ModelScope 清单 18 个文件、7.68 GB，HF 17 个文件。
 - `BTTS_RUN_MPS=1 pytest -q -m mps`：多次运行均为 **1 passed**，约 46–53s。
+- 真实本地 checkpoint `model verify --json`：`complete=true`，digest
+  `sha256:3ed2200577065bf5a5d33aece744cf56c67e8793fb7a8e220ef23e45efd0b332`。
 - wheel 测试会构建真实 wheel，并断言其中没有 `*.safetensors`、没有
   `audio_tokenizer/`、没有 `ms-models/`，且解包后的 wheel 能运行
   `btts_cli --help` 而不导入 torch。
@@ -112,12 +140,22 @@ BTTS_MODEL_DIR=../breeze-tts/ms-models/Breeze-TTS-2 \
 10. **原子性。** WAV/JSON 写入走临时文件 + `fsync` + `os.replace`；
     只有文件提交完成后才开始播放。
 11. **退出码。** 2 用法/lint，3 引擎，4 播放，5 完整性。
+12. **模型下载。** 冲突判定与非 TTY 检查都在任何网络请求之前完成。可识别的
+    未完成下载包括同源 marker、已知 checkpoint 文件、`.part`，以及 HF 的
+    `.cache/huggingface/` 元数据。ModelScope 逐文件写 `<name>.part`，用
+    `Range` 续传，校验 API 的 `Size`/`Sha256` 后 `os.replace`；HF 使用
+    `snapshot_download` 的原生续传。下载开始前写 `.btts-model.incomplete.json`，
+    全部文件完成后才写 `.btts-model.json` 并删除 incomplete。marker 文件路径
+    必须是安全的相对路径，拒绝 `..`、绝对路径和未知 schema。`--json` 期间
+    第三方 provider 的 stdout 被重定向到 stderr，stdout 只保留一个 JSON 文档。
+    `doctor` 只读 marker/incomplete 状态，不联网。
 
 ## 审核修复
 
 两轮独立的 Codex 审核均以 FAIL 结束。第一轮产生 M1–M7；第二轮确认这些已关闭，
 并产生 M8–M9。所有 Must-fix 以及 Should-fix 1/2/3/9 均已修复，每项都有回归测试。
-最终定向复核返回 PASS。
+最终定向复核返回 PASS。v0.3 model download/verify 的第三轮复审产生 M10–M13，
+第四轮复审又产生 M14–M15；全部已修复并补回归测试。
 
 | 项目 | 修复 | 回归测试 |
 |---|---|---|
@@ -133,6 +171,12 @@ BTTS_MODEL_DIR=../breeze-tts/ms-models/Breeze-TTS-2 \
 | S3 | `--wide` 要求至少两个 cover 台词，否则 exit 2 并给出提示。 | `test_design.py::test_wide_requires_two_covers` |
 | M8 | `doctor --bench --json` 用 `contextlib.redirect_stdout(sys.stderr)` 包住 `_run_bench()`，使 vendored 模型的 print、transformers 警告和 SoX 消息不会进入 stdout。成功和失败路径的 stdout 都只有一个严格 JSON 文档；诊断信息保留在 stderr。已用真实 checkpoint 验证（`json.load` 成功）。 | `test_cli.py::test_doctor_bench_json_success_keeps_stdout_clean`（fake engine 在 load 和 generate 时打印），以及原有的缺失模型失败测试 |
 | M9 | 新增共享的 `generate_or_raise_engine_error()`，保留 `BttsError`/`KeyboardInterrupt`，把其他生成异常映射为 `EngineError`。`say` 与 `design explore` 都使用它；失败 exit 3，stderr 包含可读的阶段和底层错误，无 traceback，不产生半成品 WAV/recipe。失败的 explore 候选不会加入 `completed`。 | `test_engine_errors.py::test_say_generation_failure_exits_engine_error`、`::test_explore_generation_failure_exits_engine_error`、`::test_generation_helper_preserves_domain_and_interrupt_errors` |
+| M10 | 下载前拒绝 target 本身、目录组件和最终文件的 symlink，并校验 `resolve(strict=False)` 仍在 `target.resolve()` 内；ModelScope 在创建目录/`.part`、每次替换、写 marker 和清理前重新校验全部候选路径；HF 在 `snapshot_download` 前用 `os.walk(followlinks=False)` 拒绝已有 symlink。安全错误统一 `IntegrityError`（exit 5）。 | `test_model.py::test_download_rejects_directory_symlink`、`::test_download_rejects_final_file_symlink`、`::test_download_rejects_target_symlink_without_network`、`::test_huggingface_rejects_preexisting_tree_symlink` |
+| M11 | `download_model()` 第一行重新执行 `_normalise_files()`；总大小、下载、校验、marker 和 `.part` 清理只使用规范化后的清单。拒绝 `..`、绝对路径、反斜杠、NUL、`.`、负 size、空列表和重复路径。 | `test_model.py::test_download_model_rejects_unsafe_domain_paths`、`::test_download_model_rejects_invalid_domain_manifests` |
+| M12 | 开始下载前原子删除旧 `.btts-model.json`；只有全部文件校验通过才写新 marker。校验失败的最终文件会被移除；provider 失败时尽力丢弃与清单不符的文件，确保 `doctor` 与浅层/深层 `verify` 不再把旧成功状态当作可信。清理阶段失败也会删除刚写的 marker。 | `test_model.py::test_force_refresh_failure_invalidates_old_marker` |
+| M13 | provider 与 `download_model` 的 `mkdir`、文件打开/写入、`fsync`、`os.replace`、`sha256_file`、marker 写入/删除、`.part` 清理均将 `OSError` 映射为 `EngineError`（exit 3）；命令层再加 `OSError` 兜底并保留 `BttsError`/`KeyboardInterrupt`。 | `test_model.py::test_download_maps_target_mkdir_oserror_to_exit_3`、`::test_download_maps_child_mkdir_oserror_to_exit_3`、`::test_download_maps_os_replace_oserror_to_exit_3` |
+| M14 | `_assert_path_within_target()` 捕获 `Path.resolve(strict=False)` 的 `RuntimeError`（symlink loop / too many levels），转换为 `IntegrityError`（exit 5）并提示移除循环 symlink；`OSError` 仍映射为 exit 3。 | `test_model.py::test_download_rejects_symlink_loop_before_writing` |
+| M15 | 下载开始前写入 `.btts-model.incomplete.json`（source/repo/revision/started_at/error），成功写完 marker 后才删除；`doctor` 读取并告警，`verify_model()` 浅层与 `--deep` 在无有效完成标记但存在 incomplete 时一律 `complete=false`。失败清理时，远端无 SHA-256 的最终文件只有在旧 marker 记录了匹配哈希时才保留，否则删除，防止续传把同尺寸错误文件当成完成。有效 marker 与残留 incomplete 并存时以 marker 为准，`doctor` 提示 stale 状态。 | `test_model.py::test_no_sha_provider_failure_marks_download_incomplete`、`::test_incomplete_marker_round_trip_and_invalid_state`、`::test_doctor_reports_stale_incomplete_state_but_marker_wins` |
 | S9 | README 快速开始使用 `c001`（默认 4 候选矩阵）。从本文档删除了不存在的 `design lint --json` 说法。 | 仅文档 |
 
 ## 遗留工作
@@ -169,7 +213,7 @@ BTTS_MODEL_DIR=../breeze-tts/ms-models/Breeze-TTS-2 \
 
 ### P1/P2 —— 产品范围
 
-- 批量/长文本合成、流式、HTTP API、模型下载、音色删除。
+- 批量/长文本合成、流式、HTTP API、音色删除。
 - 常驻 MPS worker，用来摊薄约 7–9 秒的模型加载（P0 有意逐命令加载；实测加载
   时间对交互式使用已经足够快）。
 - 审美与相似度评估；当前报告只做描述性指标。

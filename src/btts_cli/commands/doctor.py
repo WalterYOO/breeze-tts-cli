@@ -15,6 +15,7 @@ from rich.table import Table
 
 from btts_cli import LICENSE_NOTICE, __version__
 from btts_cli.commands._common import with_error_handling
+from btts_cli.domain.model import read_incomplete_marker, read_marker
 from btts_cli.engine.base import (
     compute_model_digest,
     missing_model_files,
@@ -22,7 +23,7 @@ from btts_cli.engine.base import (
     resolve_model_dir,
 )
 from btts_cli.output.console import console
-from btts_cli.output.errors import EngineError
+from btts_cli.output.errors import EngineError, IntegrityError
 from btts_cli.output.json import json_dumps
 
 BENCH_TEXT = "你好，这是 Breeze 语音基准测试。"
@@ -104,12 +105,36 @@ def _model_report(model_dir: Path) -> dict[str, Any]:
             path.stat().st_size for path in model_dir.rglob("*") if path.is_file()
         )
     digest = compute_model_digest(model_dir) if exists and not missing else None
+    marker = None
+    marker_error = None
+    incomplete = None
+    incomplete_error = None
+    if exists:
+        try:
+            marker = read_marker(model_dir)
+        except IntegrityError as exc:
+            marker_error = exc.message
+        try:
+            incomplete = read_incomplete_marker(model_dir)
+        except IntegrityError as exc:
+            incomplete_error = exc.message
     return {
         "path": str(model_dir),
         "exists": exists,
         "missing": missing,
         "size_bytes": size_bytes,
         "digest": digest,
+        "marker_found": marker is not None,
+        "marker_error": marker_error,
+        "source": marker.source if marker else None,
+        "repo": marker.repo if marker else None,
+        "revision": marker.revision if marker else None,
+        "downloaded_at": marker.downloaded_at if marker else None,
+        "download_incomplete": incomplete is not None,
+        "download_state_stale": marker is not None and incomplete is not None,
+        "download_started_at": incomplete.started_at if incomplete else None,
+        "download_error": incomplete.error if incomplete else None,
+        "download_state_error": incomplete_error,
     }
 
 
@@ -136,6 +161,23 @@ def _render(report: dict[str, Any]) -> None:
     else:
         table.add_row("model", f"{model['path']} ({_gb(model['size_bytes'])})")
         table.add_row("model digest", model["digest"] or "unknown")
+    if model["marker_found"]:
+        table.add_row(
+            "download",
+            f"{model['source']} · {model['repo']} @ {model['revision']}",
+        )
+        table.add_row("downloaded", model["downloaded_at"] or "unknown")
+    elif model["marker_error"]:
+        table.add_row("download", f"[yellow]{model['marker_error']}[/yellow]")
+    elif model["download_incomplete"]:
+        table.add_row(
+            "download",
+            "[yellow]incomplete (previous attempt did not finish)[/yellow]",
+        )
+    elif model["download_state_error"]:
+        table.add_row(
+            "download", f"[yellow]{model['download_state_error']}[/yellow]"
+        )
 
     device = report["device"]
     if not device["torch_installed"]:
@@ -207,8 +249,39 @@ def doctor(bench: bool, as_json: bool, model_dir: Path | None, device: str | Non
         report["warnings"].append(
             "16 GB class machine: the model uses about 8 GB and the system may run short"
         )
-    if report["model"]["exists"] and report["model"]["missing"]:
-        report["warnings"].append("model directory is incomplete; inference will fail")
+    model_report = report["model"]
+    if model_report["exists"] and model_report["missing"]:
+        if model_report["marker_found"] or model_report["download_incomplete"]:
+            report["warnings"].append(
+                "model download is incomplete; rerun `btts_cli model download`"
+            )
+        else:
+            report["warnings"].append("model directory is incomplete; inference will fail")
+    if (
+        model_report["download_incomplete"]
+        and not model_report["marker_found"]
+        and not (model_report["exists"] and model_report["missing"])
+    ):
+        detail = model_report["download_error"]
+        suffix = f": {detail}" if detail else ""
+        report["warnings"].append(
+            f"previous model download did not finish{suffix}; "
+            "rerun `btts_cli model download`"
+        )
+    if model_report["download_state_stale"]:
+        report["warnings"].append(
+            "stale download state exists alongside a valid completion marker; "
+            "the marker takes precedence and the state file is safe to remove"
+        )
+    if model_report["marker_error"]:
+        report["warnings"].append(
+            f"model completion marker is unreadable: {model_report['marker_error']}"
+        )
+    if model_report["download_state_error"]:
+        report["warnings"].append(
+            "model download state is unreadable: "
+            f"{model_report['download_state_error']}"
+        )
 
     bench_error: EngineError | None = None
     if bench:
