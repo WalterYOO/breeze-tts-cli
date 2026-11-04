@@ -1015,7 +1015,7 @@ def verify_model(model_dir: Path, *, deep: bool = False) -> VerificationResult:
                 detail = f": {incomplete.error}" if incomplete.error else ""
                 warnings.append(
                     "previous model download did not finish"
-                    f"{detail}; rerun `btts_cli model download`"
+                    f"{detail}; rerun `btts model download`"
                 )
                 failed = True
 

@@ -1,6 +1,7 @@
-# 实现说明 — btts_cli P0
+# 实现说明 — btts P0
 
 范围：PRD v0.3 第 3–9 节（P0），含 4.7 模型下载与校验。P1/P2 功能有意未实现。
+- CLI 可执行名已改为 `btts`；Python 包仍为 `btts_cli`（导入路径、数据目录和 vendored 前缀不变）。
 
 ## 状态（2026-11-03）
 
@@ -63,7 +64,7 @@ uv pip install --python ../breeze-tts/.venv/bin/python -e ".[dev]"
 | 指标 | 基础指标（numpy/soundfile）：时长、dBFS、削波、静音、异常长度。完整模式在安装了 librosa/parselmouth 时增加 F0/HNR/频谱质心；否则降级并给出提示。 |
 | Vendoring | 固定为 `daa6cb2e…` 的恰好 12 个上游文件，含 import 改写、来源头、`vendor.lock.json`、`THIRD_PARTY_NOTICES.md`、上游 Apache-2.0 LICENSE。 |
 
-`btts_cli --help` 和所有非推理命令启动时都不会导入 torch。只有
+`btts --help` 和所有非推理命令启动时都不会导入 torch。只有
 `btts_cli.engine.mps` 会在生成阶段通过 `load_engine` 导入 torch。
 
 ## 验证命令
@@ -78,7 +79,7 @@ BTTS_RUN_DOWNLOAD=1 \
 ../breeze-tts/.venv/bin/python -m pytest -q tests/test_model.py::test_modelscope_online_manifest
 
 # 用已有 checkpoint 做完整性校验
-../breeze-tts/.venv/bin/btts_cli model verify \
+../breeze-tts/.venv/bin/btts model verify \
   --model ../breeze-tts/ms-models/Breeze-TTS-2 --json
 
 # vendor 漂移检查
@@ -101,7 +102,7 @@ BTTS_MODEL_DIR=../breeze-tts/ms-models/Breeze-TTS-2 \
   `sha256:3ed2200577065bf5a5d33aece744cf56c67e8793fb7a8e220ef23e45efd0b332`。
 - wheel 测试会构建真实 wheel，并断言其中没有 `*.safetensors`、没有
   `audio_tokenizer/`、没有 `ms-models/`，且解包后的 wheel 能运行
-  `btts_cli --help` 而不导入 torch。
+  `btts --help` 而不导入 torch。
 - 真实 MPS CLI 冒烟测试（2026-11-03），模型 digest
   `sha256:3ed2200577065bf5a5d33aece744cf56c67e8793fb7a8e220ef23e45efd0b332`：
   - `doctor --bench`：加载 9.38s，生成 26.07s，RTF 7.24。

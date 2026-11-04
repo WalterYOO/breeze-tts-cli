@@ -1,4 +1,4 @@
-"""``btts_cli doctor``: environment, model, device, memory and license."""
+"""``btts doctor``: environment, model, device, memory and license."""
 
 from __future__ import annotations
 
@@ -145,7 +145,7 @@ def _gb(value: int | None) -> str:
 
 
 def _render(report: dict[str, Any]) -> None:
-    table = Table(title="btts_cli doctor", show_header=False, box=None)
+    table = Table(title="btts doctor", show_header=False, box=None)
     table.add_column("key", style="bold")
     table.add_column("value")
 
@@ -253,7 +253,7 @@ def doctor(bench: bool, as_json: bool, model_dir: Path | None, device: str | Non
     if model_report["exists"] and model_report["missing"]:
         if model_report["marker_found"] or model_report["download_incomplete"]:
             report["warnings"].append(
-                "model download is incomplete; rerun `btts_cli model download`"
+                "model download is incomplete; rerun `btts model download`"
             )
         else:
             report["warnings"].append("model directory is incomplete; inference will fail")
@@ -266,7 +266,7 @@ def doctor(bench: bool, as_json: bool, model_dir: Path | None, device: str | Non
         suffix = f": {detail}" if detail else ""
         report["warnings"].append(
             f"previous model download did not finish{suffix}; "
-            "rerun `btts_cli model download`"
+            "rerun `btts model download`"
         )
     if model_report["download_state_stale"]:
         report["warnings"].append(

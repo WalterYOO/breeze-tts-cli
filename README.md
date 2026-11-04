@@ -1,4 +1,4 @@
-# breeze-tts-cli (`btts_cli`)
+# breeze-tts-cli (`btts`)
 
 面向 Apple Silicon（MPS）的本地音色设计工作台，也是 **Breeze TTS 2** 的可复现请求运行器。它把“写 instruction → 生成 seed/cfg 网格 → 比较 → 固化音色”这套手工循环，收敛成一条可脚本化的命令链。
 
@@ -54,19 +54,19 @@ Breeze-TTS-2/
 
 ```bash
 # Hugging Face（默认，使用 huggingface-hub；HF_TOKEN 只从环境读取）
-btts_cli model download
+btts model download
 
 # ModelScope（只用标准库 urllib，不需要安装 modelscope）
-btts_cli model download --source modelscope
+btts model download --source modelscope
 
 # 指定目录、revision，或非交互执行
-btts_cli model download --to ms-models/Breeze-TTS-2 --revision main --yes
+btts model download --to ms-models/Breeze-TTS-2 --revision main --yes
 
 export BTTS_MODEL_DIR="$PWD/ms-models/Breeze-TTS-2"
 
 # 默认检查必需文件、分片和标记中的大小；--deep 重算 SHA-256
-btts_cli model verify
-btts_cli model verify --deep --json
+btts model verify
+btts model verify --deep --json
 ```
 
 默认目标目录是 `$BTTS_MODEL_DIR`，否则 `./ms-models/Breeze-TTS-2`。下载前会显示来源、repo、revision、文件数、总大小和许可证；非 TTY 环境必须传 `--yes`；非空目录必须可识别为未完成下载，或传 `--force`（只覆盖同名模型文件，不删除无关文件）。中断后重跑会复用 `.part` 并通过 HTTP `Range` 续传，逐文件校验大小与 SHA-256 后原子替换。完成后写入 `.btts-model.json`（来源、repo、revision、下载时间及每个文件的大小/SHA-256），`doctor` 会显示这些信息。下载即表示接受 BreezeBlue Research and Non-Commercial License 1.1。
@@ -89,32 +89,32 @@ print(snapshot_download("BreezeBlue/breeze-tts-2"))
 
 ```bash
 # 检查机器、模型文件、许可证，并可选地跑基准
-btts_cli doctor
-btts_cli doctor --bench --json
+btts doctor
+btts doctor --bench --json
 
 # 创建并 lint 一份可编辑的音色设计描述
-btts_cli design init dusk.yaml
-btts_cli design lint dusk.yaml --show-rendered
+btts design init dusk.yaml
+btts design lint dusk.yaml --show-rendered
 
 # 生成默认的 2 seed × 2 cfg 矩阵（4 个候选，MPS 上约 1.5 分钟）
-btts_cli design explore dusk.yaml --out runs/dusk-01
+btts design explore dusk.yaml --out runs/dusk-01
 
 # 客观指标、CSV/Markdown、试听合集，以及离线 audition 页面
-btts_cli design report runs/dusk-01 --metrics full
+btts design report runs/dusk-01 --metrics full
 
 # 把选中的候选固化成可复现的 design 配方
-btts_cli design freeze runs/dusk-01 --take c001 --name dusk --as design
+btts design freeze runs/dusk-01 --take c001 --name dusk --as design
 
 # 或固化成 clone 参考（需要人工逐字确认转写文本）
-btts_cli design freeze runs/dusk-01 --take c001 --name dusk --as clone --confirm-transcript
+btts design freeze runs/dusk-01 --take c001 --name dusk --as clone --confirm-transcript
 
-btts_cli voice list
-btts_cli voice show dusk
+btts voice list
+btts voice show dusk
 
 # say 的三条路由
-btts_cli say "欢迎收听今晚的节目。" --design dusk.yaml
-btts_cli say "欢迎收听今晚的节目。" --voice @dusk
-btts_cli say "欢迎收听今晚的节目。" --voice @dusk --direction "更轻、更慢，带一点笑意"
+btts say "欢迎收听今晚的节目。" --design dusk.yaml
+btts say "欢迎收听今晚的节目。" --voice @dusk
+btts say "欢迎收听今晚的节目。" --voice @dusk --direction "更轻、更慢，带一点笑意"
 ```
 
 ## 命令（P0）

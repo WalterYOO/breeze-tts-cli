@@ -1,4 +1,4 @@
-"""``btts_cli model``: download and verify the Breeze TTS 2 checkpoint."""
+"""``btts model``: download and verify the Breeze TTS 2 checkpoint."""
 
 from __future__ import annotations
 
@@ -205,7 +205,7 @@ def model_verify(model_dir: Path | None, deep: bool, as_json: bool) -> None:
     if as_json:
         click.echo(json_dumps(result.to_dict()), nl=False)
     else:
-        table = Table(title="btts_cli model verify", show_header=False, box=None)
+        table = Table(title="btts model verify", show_header=False, box=None)
         table.add_column("key", style="bold")
         table.add_column("value")
         table.add_row("model", result.model_dir)

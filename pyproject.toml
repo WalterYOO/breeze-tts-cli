@@ -57,7 +57,7 @@ dev = [
 ]
 
 [project.scripts]
-btts_cli = "btts_cli.cli:main"
+btts = "btts_cli.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/btts_cli"]

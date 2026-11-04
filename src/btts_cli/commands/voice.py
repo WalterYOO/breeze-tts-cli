@@ -1,4 +1,4 @@
-"""``btts_cli voice``: add, list and show local profiles."""
+"""``btts voice``: add, list and show local profiles."""
 
 from __future__ import annotations
 
@@ -146,7 +146,7 @@ def voice_list() -> None:
     if not profiles:
         console.print("no voices yet.")
         console.print(
-            "add one with: btts_cli voice add NAME --ref REF.wav --text REF.txt "
+            "add one with: btts voice add NAME --ref REF.wav --text REF.txt "
             "--confirm-transcript"
         )
         return

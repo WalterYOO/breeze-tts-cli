@@ -50,7 +50,7 @@ def resolve_device(explicit: str | None) -> str:
         return "mps"
     raise EngineError(
         "MPS is not available; refusing to fall back to CPU silently",
-        hint="run `btts_cli doctor` for details, or pass --device cpu only for debugging",
+        hint="run `btts doctor` for details, or pass --device cpu only for debugging",
     )
 
 

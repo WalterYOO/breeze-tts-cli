@@ -1,4 +1,4 @@
-"""``btts_cli design``: init, lint, explore, report, freeze."""
+"""``btts design``: init, lint, explore, report, freeze."""
 
 from __future__ import annotations
 
@@ -103,7 +103,7 @@ def design_init(
     compiled = compile_design(spec)
     console.print(f"[green]wrote[/green] {file} (template {spec.template})")
     console.print(Panel(compiled.rendered_instruction, title="rendered instruction"))
-    console.print(f"next: btts_cli design lint {file}")
+    console.print(f"next: btts design lint {file}")
 
 
 @design.command("lint")
@@ -190,7 +190,7 @@ def design_explore(
         blocking = [issue.code for issue in lint.issues if issue.severity == "block"]
         raise UsageError(
             "design has blocking lint issues: " + ", ".join(blocking),
-            hint=f"run `btts_cli design lint {file}` for details",
+            hint=f"run `btts design lint {file}` for details",
         )
 
     plans, matrix = build_plans(
@@ -363,12 +363,12 @@ def design_explore(
             write_manifest(out_dir, manifest)
             console.print(
                 f"[yellow]stopped[/yellow] after {len(durations)} take(s); "
-                f"continue with: btts_cli design explore {file} --out {out_dir} --resume"
+                f"continue with: btts design explore {file} --out {out_dir} --resume"
             )
     finally:
         engine.close()
 
-    console.print(f"next: btts_cli design report {out_dir}")
+    console.print(f"next: btts design report {out_dir}")
 
 
 @design.command("report")

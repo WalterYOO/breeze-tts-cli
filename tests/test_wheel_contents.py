@@ -48,6 +48,12 @@ def test_wheel_has_no_weights_and_all_licenses(tmp_path: Path) -> None:
         assert any(name.endswith("_vendor/breeze_tts/LICENSE") for name in names)
         assert any(name.endswith("THIRD_PARTY_NOTICES.md") for name in names)
 
+        entry_points = archive.read(
+            next(name for name in names if name.endswith("entry_points.txt"))
+        ).decode("utf-8")
+        assert "btts = btts_cli.cli:main" in entry_points
+        assert "btts_cli = " not in entry_points
+
     extracted = tmp_path / "site"
     with zipfile.ZipFile(wheel) as archive:
         archive.extractall(extracted)

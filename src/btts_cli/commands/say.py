@@ -1,4 +1,4 @@
-"""``btts_cli say``: design, clone and direction routes."""
+"""``btts say``: design, clone and direction routes."""
 
 from __future__ import annotations
 
@@ -98,7 +98,7 @@ def say(
             blocking = [issue.code for issue in lint.issues if issue.severity == "block"]
             raise UsageError(
                 "design has blocking lint issues: " + ", ".join(blocking),
-                hint=f"run `btts_cli design lint {design_file}` for details",
+                hint=f"run `btts design lint {design_file}` for details",
             )
         instruction = compiled.rendered_instruction
         language = compiled.language

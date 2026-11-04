@@ -1,4 +1,4 @@
-# breeze-tts-cli（btts_cli）PRD v0.3
+# breeze-tts-cli（btts）PRD v0.3
 
 > 状态：P0 已实现（`fb48022`）；v0.3 把模型下载纳入 P0，支持 Hugging Face 与 ModelScope。
 > 模型：Breeze-TTS-2，本地权重 `../breeze-tts/ms-models/Breeze-TTS-2`（7.2GB）。
@@ -56,7 +56,7 @@ instruction + text + seed + cfg_scale + model digest
 5. 人工挑“低 + 干净”的平衡点；
 6. 用选中的 `boy.wav` 作参考音频 + 精确转写做克隆。
 
-`btts_cli` 应把这套动作变成一条命令链。
+`btts` 应把这套动作变成一条命令链。
 
 ---
 
@@ -110,25 +110,25 @@ model download（首次）→ model verify → doctor
 ### 3.2 P0 命令
 
 ```text
-btts_cli model download [--source huggingface|modelscope] [--repo ID]
+btts model download [--source huggingface|modelscope] [--repo ID]
                         [--revision REV] [--to DIR] [--force] [--yes] [--json]
-btts_cli model verify [--model DIR] [--deep] [--json]
+btts model verify [--model DIR] [--deep] [--json]
 
-btts_cli doctor [--bench] [--json]
+btts doctor [--bench] [--json]
 
-btts_cli design init FILE
-btts_cli design lint FILE [--show-rendered]
-btts_cli design explore FILE --out RUN_DIR [--resume] [--wide]
-btts_cli design report RUN_DIR [--metrics basic|full] [--csv] [--html] [--reel]
-btts_cli design freeze RUN_DIR --take ID --name NAME [--as design|clone] [--confirm-transcript]
+btts design init FILE
+btts design lint FILE [--show-rendered]
+btts design explore FILE --out RUN_DIR [--resume] [--wide]
+btts design report RUN_DIR [--metrics basic|full] [--csv] [--html] [--reel]
+btts design freeze RUN_DIR --take ID --name NAME [--as design|clone] [--confirm-transcript]
 
-btts_cli voice add NAME --ref WAV --text FILE --confirm-transcript
-btts_cli voice list
-btts_cli voice show NAME
+btts voice add NAME --ref WAV --text FILE --confirm-transcript
+btts voice list
+btts voice show NAME
 
-btts_cli say TEXT --design FILE [--seed N] [--cfg N] [--out FILE] [--play]
-btts_cli say TEXT --voice @NAME [--out FILE] [--play]
-btts_cli say TEXT --voice @NAME --direction TEXT [--cfg N] [--out FILE] [--play]
+btts say TEXT --design FILE [--seed N] [--cfg N] [--out FILE] [--play]
+btts say TEXT --voice @NAME [--out FILE] [--play]
+btts say TEXT --voice @NAME --direction TEXT [--cfg N] [--out FILE] [--play]
 ```
 
 ### 3.3 P0 明确砍掉
@@ -254,8 +254,8 @@ instruction variant × seed × cfg_scale × cover script
 ### 4.5 冻结
 
 ```bash
-btts_cli design freeze RUN --take c007 --name dusk --as design
-btts_cli design freeze RUN --take c007 --name dusk --as clone --confirm-transcript
+btts design freeze RUN --take c007 --name dusk --as design
+btts design freeze RUN --take c007 --name dusk --as clone --confirm-transcript
 ```
 
 两种 profile：
@@ -290,9 +290,9 @@ btts_cli design freeze RUN --take c007 --name dusk --as clone --confirm-transcri
 #### 4.7.1 命令与默认值
 
 ```text
-btts_cli model download [--source huggingface|modelscope] [--repo ID]
+btts model download [--source huggingface|modelscope] [--repo ID]
                         [--revision REV] [--to DIR] [--force] [--yes] [--json]
-btts_cli model verify [--model DIR] [--deep] [--json]
+btts model verify [--model DIR] [--deep] [--json]
 ```
 
 | 参数 | 默认值 | 说明 |
@@ -744,7 +744,7 @@ dev = [
 ]
 
 [project.scripts]
-btts_cli = "btts_cli.cli:main"
+btts = "btts_cli.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/btts_cli"]
@@ -758,13 +758,13 @@ packages = ["src/btts_cli"]
 - 没有 `audio_tokenizer/`；
 - 没有 `ms-models/`；
 - 包含根 LICENSE、THIRD_PARTY_NOTICES、vendor LICENSE；
-- 基础安装（未装 torch）可执行 `btts_cli --help`。
+- 基础安装（未装 torch）可执行 `btts --help`。
 
 ---
 
 ## 9. P0 验收标准
 
-1. `pip install -e '.[mps]'` 成功；基础安装未装 torch 时 `btts_cli --help` 可用。
+1. `pip install -e '.[mps]'` 成功；基础安装未装 torch 时 `btts --help` 可用。
 2. wheel 中无权重、无 `audio_tokenizer/`、无 `ms-models/`；许可证文件齐全。
 3. `doctor --bench` 检测 MPS，记录模型加载时间、一次短生成 RTF、MPS 内存；MPS 不可用时明确失败，不静默用 CPU。
 4. vendored 推理包可独立导入并加载模型（已实测 7.2 秒）。

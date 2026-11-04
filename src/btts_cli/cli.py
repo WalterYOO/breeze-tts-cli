@@ -9,7 +9,7 @@ from btts_cli.commands import design, doctor, model, say, voice
 
 
 @click.group(context_settings={"help_option_names": ["-h", "--help"]})
-@click.version_option(__version__, prog_name="btts_cli")
+@click.version_option(__version__, prog_name="btts")
 def cli() -> None:
     """Local voice-design workbench for Breeze TTS 2 (research / non-commercial)."""
 
@@ -22,7 +22,7 @@ cli.add_command(say.say)
 
 
 def main() -> None:
-    cli(prog_name="btts_cli")
+    cli(prog_name="btts")
 
 
 if __name__ == "__main__":  # pragma: no cover

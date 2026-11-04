@@ -1,7 +1,7 @@
 """Engine loading. Importing this module never imports ``torch``.
 
 The MPS implementation is imported lazily inside :func:`load_engine`, so
-``btts_cli --help``, ``design lint`` and every unit test using a fake engine
+``btts --help``, ``design lint`` and every unit test using a fake engine
 work in a base install without the ``[mps]`` extras.
 """
 

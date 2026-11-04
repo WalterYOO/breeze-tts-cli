@@ -305,7 +305,7 @@ def load_run(run_dir: Path) -> RunState:
     if not path.is_file():
         raise UsageError(
             f"not a btts run directory: {run_dir}",
-            hint="expected run.json (create one with `btts_cli design explore`)",
+            hint="expected run.json (create one with `btts design explore`)",
         )
     try:
         manifest = RunManifest.model_validate(read_json(path))
