@@ -184,13 +184,13 @@ Breeze 没有可保存的音色 prompt。一次生成等于 `instruction + text 
 
 - 音色库：`$BTTS_DATA_DIR/voices`，或平台用户数据目录（macOS 上为 `~/Library/Application Support/btts_cli/voices`）。
 - `design explore` 写出 `runs/<run>/run.json`、`candidates/<take>.wav` 和 `<take>.recipe.json`。每个完成的候选都原子写入；`--resume` 只补齐缺失或哈希不匹配的候选。
-- `design report` 写出 `report/metrics.csv`、`report/report.md`、`report/all_candidates.wav` 和 `report/audition.html`。
+- `design report` 写出 `report/metrics.csv`、`report/report.md`、`report/all_candidates.wav` 和 `report/audition.html`。试听页把该 run 的全部完整候选放在一起，标出指标推荐项并默认选中，可复制选中项的 take ID、freeze 命令和试听文本。
 - `say` 在未指定 `--out` 时写出 `outputs/say-*.wav` 及 recipe sidecar。
 - sidecar 和 profile 中永远不含 token、私有 URL 或绝对路径。
 
 ## 指标不是评委
 
-`design report` 会测量时长、削波、静音；`full` 模式还会测 F0 中位数、HNR 和频谱质心。这些指标用于**排除和排序**技术性失败，不是审美评分；最终选择仍然由人来做。
+`design report` 会测量时长、削波、静音；`full` 模式还会测 F0 中位数、HNR 和频谱质心。这些指标用于**排除和排序**技术性失败，不是审美评分；`audition.html` 的 `Metric pick` 只是按这些指标给出的默认选项，最终选择仍然由人试听决定。
 
 ## 测试
 

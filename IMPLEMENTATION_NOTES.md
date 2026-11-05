@@ -57,7 +57,7 @@ uv pip install --python ../breeze-tts/.venv/bin/python -e ".[dev]"
 | `design init` | 从模板注册表（6 个模板）写出可编辑的 v1 design YAML。`--force` 覆盖。 |
 | `design lint` | 五个维度、block/warn 规则、`--show-rendered`。lint 阻断 exit 1，schema/用法错误 exit 2。 |
 | `design explore` | 默认 4 个候选（2 seeds × 2 cfgs），`--wide` 为 8 个。支持显式 `--seeds`/`--cfgs`。矩阵超过 16 个需要 `--yes`。WAV 与 recipe 依次原子写入，每个候选后更新 manifest。SIGINT 在当前候选结束后停止。`--resume` 只补齐缺失/哈希不匹配的候选。 |
-| `design report` | 生成 `metrics.csv`、`report.md`、`all_candidates.wav`、`audition.html`；可切换 `--csv/--no-csv`、`--html/--no-html`、`--reel/--no-reel`。 |
+| `design report` | 生成 `metrics.csv`、`report.md`、`all_candidates.wav`、`audition.html`；可切换 `--csv/--no-csv`、`--html/--no-html`、`--reel/--no-reel`。试听页汇总该 run 的全部完整候选，标出并默认勾选指标推荐项（`Metric pick`），支持改选和复制 take ID / freeze 命令 / 台词；推荐仅排除技术失败并排序，不是审美结论。 |
 | `design freeze` | 从候选固化 design profile，或通过 `--as clone --confirm-transcript` 固化 clone profile（`--force`、`--allow-long-ref`）。拒绝哈希不匹配、被截断的候选、内联事件，以及不符合短/长参考策略的音频。 |
 | `voice add/list/show` | clone profile 保存 `ref.wav` + 逐字 `ref.txt` + preview。写出 `profile.json`、`LICENSE.txt`；回放时校验哈希。 |
 | `say` | 只允许一条路由：`--design`、`--voice @clone` 或 `--voice @clone --direction`。先写 WAV，再写 recipe，最后可选调用 `afplay` 播放。 |
@@ -91,10 +91,26 @@ BTTS_MODEL_DIR=../breeze-tts/ms-models/Breeze-TTS-2 \
 ../breeze-tts/.venv/bin/python -m pytest -q -m mps
 ```
 
+### audition.html 手动验收
+
+浏览器交互不做自动化（项目不引入 Playwright/Selenium）；以下清单需人工在
+Chrome/Safari 用 `file://` 打开 `RUN_DIR/report/audition.html` 验收：
+
+- [ ] 页面列出该 run 的全部完整候选，音频都能播放。
+- [ ] 指标推荐项带 `Metric pick` 徽章，且默认被勾选/高亮。
+- [ ] 点击另一张卡片或它的 radio，选中态、底部 take ID 和命令预览同步更新。
+- [ ] `Copy take ID`、`Copy freeze command`、`Copy script` 复制的是当前选中项。
+- [ ] 在 `file://` 下复制成功；禁用 clipboard API 时 `textarea` 回退仍可用。
+- [ ] 盲听模式下推荐徽章、选中高亮和状态栏信息被隐藏；关闭后恢复。
+- [ ] 台词含换行/引号/`</script>` 时页面不破版，`Copy script` 文本原样。
+
 ## 测试结果
 
 - `ruff check .`：全部通过。
 - 默认 `pytest -q`：**118 passed, 2 skipped**（跳过 MPS 与在线下载测试）。
+- 2026-11-05 新增 `tests/test_recommend.py` 与 audition 结构测试后：
+  **127 passed, 2 skipped**；另有 3 个 `tests/test_resume.py` model-checkpoint
+  失败在未改动的基线上同样复现，与试听页改动无关。
 - `BTTS_RUN_DOWNLOAD=1 pytest tests/test_model.py::test_modelscope_online_manifest`：
   **1 passed**；真实 ModelScope 清单 18 个文件、7.68 GB，HF 17 个文件。
 - `BTTS_RUN_MPS=1 pytest -q -m mps`：多次运行均为 **1 passed**，约 46–53s。

@@ -25,7 +25,7 @@ description: >-
    `--confirm-transcript`、`--force`、`--allow-long-ref`、超过 16 个候选的矩阵、
    覆盖已存在的输出，都必须先得到用户明确同意。
 3. **指标不是评委**：`design report` 的指标只用于排除技术性失败和排序；
-   最终选哪个 take 必须由人试听决定。
+   `audition.html` 里的 Metric pick 只是指标推荐，最终选哪个 take 必须由人试听决定。
 
 ## 心智模型
 
@@ -66,13 +66,19 @@ btts design init dusk.yaml
 btts design lint dusk.yaml --show-rendered
 btts design explore dusk.yaml --out runs/dusk-01
 btts design report runs/dusk-01 --metrics basic
-# 人试听 runs/dusk-01/report/audition.html 或 all_candidates.wav，
-# 由用户选定 TAKE_ID；在此之前不要 freeze
+# 把 runs/dusk-01/report/audition.html 交给用户试听：
+#   - 同一批候选都在这一页；默认勾选 Metric pick（指标推荐，不是审美结论）
+#   - 用户可改选，点 Copy take ID / Copy freeze command / Copy script
+# 等用户把选中结果发回，确认 TAKE_ID 后再 freeze；在此之前不要 freeze
 btts design freeze runs/dusk-01 --take <TAKE_ID> --name dusk --as clone
 # CLI 打印 source text 后以退出码 2 停止；把原文交用户逐字确认
 btts design freeze runs/dusk-01 --take <TAKE_ID> --name dusk --as clone --confirm-transcript
 ```
 
+- `audition.html` 把该 run 的全部完整候选放在同一页，按失败项、削波、静音、
+  HNR 做确定性排序并标出 `Metric pick`，默认勾选它；这**不是**审美结论。
+  页面底部可复制选中项的 take ID、freeze 命令和试听文本。盲听模式会隐藏推荐
+  与选中信息。
 - lint 有 `block` 级问题（退出码 1）时不要硬跑 explore，先把问题修掉。
 - explore 默认 4 个候选（seeds `42,43` × cfg `2.5,4.0`）；`--wide` 默认 8 个。
   RTF≈9，4 个约 1.5 分钟；超时给足，中断后用 `--resume` 续跑。

@@ -112,6 +112,15 @@ btts design report RUN_DIR [--metrics basic|full]
 - `metrics.csv`、`report.md`
 - `all_candidates.wav`（所有完整候选按 `--gap` 秒拼接）
 - `audition.html`（离线试听页）
+  - 同一 run 的全部完整候选都在一页；推荐项标 `Metric pick` 并默认勾选。
+  - 推荐是确定性排序：先按 short/long/truncated/clipping/silence 失败项数量排序
+    （失败少的优先），再按削波、静音、HNR、voiced ratio、take id 排序。
+    缺失的可选指标显示 `n/a`，不算失败；全部失败时标记 degraded 并显示
+    least-bad 提示。
+  - 页面底部可复制选中项的 take ID、freeze 命令和实际试听文本；命令已做
+    shell quoting，非法音色名用 `YOUR_VOICE_NAME` 占位。inline event 文本
+    会自动改用 `--as design`（clone 会拒绝）。
+  - 盲听模式隐藏推荐、选中高亮和状态栏信息；复制仍是用户显式操作。
 
 默认 `--csv`、`--html`、`--reel` 全开，`--gap` 默认 1.0 秒且限制在 0–30；
 `report.md` 始终写入。`basic` 测时长、采样率、峰值/RMS、削波、静音、

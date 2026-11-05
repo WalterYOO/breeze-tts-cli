@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -14,23 +14,24 @@
     --muted: #93a1ae;
     --accent: #7cc4ff;
     --warn: #ffcf70;
+    --good: #8fe3a4;
   }
   * { box-sizing: border-box; }
   body {
-    margin: 0; padding: 2rem;
+    margin: 0; padding: 2rem 2rem 7rem;
     background: var(--bg); color: var(--text);
     font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   }
-  header { max-width: 980px; margin: 0 auto 1.5rem; }
+  header, .instruction, .toolbar, .grid, .notes, .selection-bar { max-width: 980px; margin-left: auto; margin-right: auto; }
   h1 { margin: 0 0 .4rem; font-size: 1.5rem; letter-spacing: .02em; }
   .meta { color: var(--muted); font-size: .86rem; }
   .instruction {
-    max-width: 980px; margin: 0 auto 1.25rem; padding: .9rem 1rem;
+    margin-top: 0; margin-bottom: 1.25rem; padding: .9rem 1rem;
     background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
     color: var(--muted);
   }
   .toolbar {
-    max-width: 980px; margin: 0 auto 1rem;
+    margin-bottom: 1rem;
     display: flex; gap: .75rem; align-items: center; flex-wrap: wrap;
   }
   button {
@@ -38,38 +39,69 @@
     border-radius: 8px; padding: .45rem .8rem; cursor: pointer; font: inherit;
   }
   button:hover { border-color: var(--accent); }
+  button:active { transform: translateY(1px); }
   .grid {
-    max-width: 980px; margin: 0 auto;
     display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
     gap: 1rem;
   }
   .card {
     background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
-    padding: 1rem;
+    padding: 1rem; cursor: pointer;
   }
-  .card header {
-    display: flex; justify-content: space-between; align-items: baseline;
-    margin: 0 0 .6rem; max-width: none;
+  .card:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .card.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+  .card-header {
+    display: flex; gap: .55rem; align-items: center; flex-wrap: wrap;
+    margin: 0 0 .35rem;
   }
+  .card-header input[type="radio"] { accent-color: var(--accent); margin: 0; }
   .label { font-size: 1.4rem; font-weight: 700; color: var(--accent); }
+  .badge {
+    font-size: .72rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+    color: #0d1216; background: var(--good); border-radius: 999px; padding: .12rem .5rem;
+  }
+  .badge.degraded { background: var(--warn); }
   .take { color: var(--muted); font-size: .8rem; }
-  audio { width: 100%; margin: .4rem 0 .6rem; }
+  audio { width: 100%; margin: .45rem 0 .6rem; }
+  .why {
+    font-size: .8rem; color: var(--muted); border-left: 2px solid var(--line);
+    padding-left: .6rem; margin: .1rem 0 .7rem;
+  }
+  .flags { color: var(--warn); }
   dl {
     display: grid; grid-template-columns: auto 1fr; gap: .15rem .6rem;
     margin: 0; font-size: .82rem;
   }
   dt { color: var(--muted); }
   dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
-  .blind .take, .blind .detail { visibility: hidden; }
-  .blind .card:hover .detail { visibility: visible; }
-  .notes { max-width: 980px; margin: 1.5rem auto 0; color: var(--muted); font-size: .82rem; }
+  .script {
+    margin: .7rem 0 0; padding-top: .6rem; border-top: 1px dashed var(--line);
+    font-size: .82rem; color: var(--muted); white-space: pre-wrap;
+  }
+  .script .script-label { color: var(--text); font-weight: 600; }
+  .blind .take, .blind .detail, .blind .badge, .blind input[type="radio"],
+  .blind .selection-summary, .blind .command { visibility: hidden; }
+  .blind .card.selected { border-color: var(--line); box-shadow: none; }
+  .notes { margin-top: 1.5rem; color: var(--muted); font-size: .82rem; }
   .notes code { color: var(--text); }
   .warn { color: var(--warn); }
+  .selection-bar {
+    position: sticky; bottom: 0; margin-top: 1.5rem; padding: .8rem 1rem;
+    background: rgba(25, 30, 35, .96); border: 1px solid var(--line); border-radius: 12px;
+    display: grid; gap: .5rem; backdrop-filter: blur(6px);
+  }
+  .selection-summary { font-size: .86rem; color: var(--muted); }
+  .selection-summary strong { color: var(--text); }
+  .selection-actions { display: flex; gap: .5rem; flex-wrap: wrap; }
+  .command {
+    display: block; font-size: .78rem; color: var(--muted);
+    overflow-wrap: anywhere; user-select: all;
+  }
 </style>
 </head>
 <body>
 <header>
-  <h1>Blind audition · {{ name }}</h1>
+  <h1>Audition · {{ name }}</h1>
   <div class="meta">
     run <code>{{ run_id }}</code> · template <code>{{ template_name }}</code> ·
     metrics <code>{{ metrics_level }}</code> · model <code>{{ model_digest }}</code> ·
@@ -81,17 +113,30 @@
 
 <div class="toolbar">
   <button id="blind-toggle" type="button">Hide take details (blind)</button>
-  <span class="meta">Space = play/pause focused card · Click a card to focus</span>
+  <span class="meta">Space = play/pause focused card · Click a card to select · The default is the metric pick (not an aesthetic judgement)</span>
 </div>
 
 <div class="grid" id="grid">
 {% for candidate in candidates %}
-  <section class="card" tabindex="0" data-label="{{ candidate.label }}">
-    <header>
+  <section class="card{% if candidate.recommended %} selected{% endif %}" tabindex="0" data-take-id="{{ candidate.take_id }}">
+    <div class="card-header">
+      <input type="radio" name="take" value="{{ candidate.take_id }}"{% if candidate.recommended %} checked{% endif %} aria-label="Select take {{ candidate.label }}">
       <span class="label">{{ candidate.label }}</span>
+      {% if candidate.recommended %}
+      <span class="badge{% if payload.degraded %} degraded{% endif %}">Metric pick</span>
+      {% endif %}
       <span class="take detail">{{ candidate.take_id }} · seed {{ candidate.seed }} · cfg {{ candidate.cfg_scale }}</span>
-    </header>
+    </div>
     <audio controls preload="none" src="{{ candidate.audio }}"></audio>
+    <div class="why detail">
+      {% if candidate.recommended and payload.degraded %}
+      <span class="flags">no candidate passed technical checks — least-bad pick.</span><br>
+      {% endif %}
+      flags: <span class="flags">{{ candidate.flag_text }}</span> ·
+      clipping {{ candidate.clipping_ratio }} · silence {{ candidate.silence_ratio }} ·
+      HNR {{ candidate.hnr_db }}
+      {% if candidate.inline_event %}<br>inline event in script: clone freeze is rejected; the copied command uses <code>--as design</code>.{% endif %}
+    </div>
     <dl class="detail">
       <dt>duration</dt><dd>{{ candidate.duration_s }} s</dd>
       <dt>peak</dt><dd>{{ candidate.peak_dbfs }} dBFS</dd>
@@ -99,9 +144,11 @@
       <dt>clipping</dt><dd>{{ candidate.clipping_ratio }}</dd>
       <dt>silence</dt><dd>{{ candidate.silence_ratio }}</dd>
       <dt>F0 median</dt><dd>{{ candidate.f0_median_hz }} Hz</dd>
+      <dt>voiced</dt><dd>{{ candidate.voiced_ratio }}</dd>
       <dt>HNR</dt><dd>{{ candidate.hnr_db }} dB</dd>
       <dt>centroid</dt><dd>{{ candidate.spectral_centroid_hz }} Hz</dd>
     </dl>
+    <p class="script detail"><span class="script-label">script:</span> {{ candidate.text }}</p>
   </section>
 {% endfor %}
 </div>
@@ -109,8 +156,8 @@
 <div class="notes">
   <p>
     Metrics help eliminate technical failures and sort candidates. They are not an
-    aesthetic score: choose the final take by ear, then freeze it with
-    <code>btts design freeze</code>.
+    aesthetic score: the <em>Metric pick</em> is only a starting point. Listen, select
+    the take you want, then copy its take ID or the freeze command below.
   </p>
   {% if skipped %}
   <p class="warn">Incomplete takes skipped:
@@ -125,24 +172,137 @@
   <p class="warn">{{ license_notice }}</p>
 </div>
 
-<script>
-  const grid = document.getElementById('grid');
-  const toggle = document.getElementById('blind-toggle');
-  let blind = false;
+<footer class="selection-bar">
+  <div class="selection-summary">
+    Selected: <strong id="selected-label">—</strong>
+    <code id="selected-take">—</code>
+  </div>
+  <div class="selection-actions">
+    <button type="button" id="copy-take">Copy take ID</button>
+    <button type="button" id="copy-command">Copy freeze command</button>
+    <button type="button" id="copy-script">Copy script</button>
+  </div>
+  <code class="command" id="selected-command">—</code>
+</footer>
 
-  toggle.addEventListener('click', () => {
-    blind = !blind;
-    grid.classList.toggle('blind', blind);
+<script type="application/json" id="audition-payload">{{ payload | tojson }}</script>
+<script>
+  "use strict";
+  const data = JSON.parse(document.getElementById('audition-payload').textContent);
+  const byId = new Map(data.candidates.map((candidate) => [candidate.take_id, candidate]));
+  const cards = Array.from(document.querySelectorAll('.card'));
+  const radios = Array.from(document.querySelectorAll('input[name="take"]'));
+  const toggle = document.getElementById('blind-toggle');
+  const selectedLabel = document.getElementById('selected-label');
+  const selectedTake = document.getElementById('selected-take');
+  const selectedCommand = document.getElementById('selected-command');
+  const copyTake = document.getElementById('copy-take');
+  const copyCommand = document.getElementById('copy-command');
+  const copyScript = document.getElementById('copy-script');
+
+  let blind = false;
+  let selected = data.recommended && byId.has(data.recommended)
+    ? data.recommended
+    : data.candidates[0].take_id;
+
+  function renderSelection() {
+    const candidate = byId.get(selected);
+    if (!candidate) return;
+    radios.forEach((radio) => { radio.checked = radio.value === selected; });
+    cards.forEach((card) => {
+      card.classList.toggle('selected', card.dataset.takeId === selected);
+    });
+    selectedLabel.textContent = candidate.label;
+    selectedTake.textContent = candidate.take_id;
+    selectedCommand.textContent = candidate.freeze_command;
+  }
+
+  function select(takeId) {
+    if (!byId.has(takeId)) return;
+    selected = takeId;
+    renderSelection();
+  }
+
+  function setBlind(next) {
+    blind = next;
+    document.body.classList.toggle('blind', blind);
+    radios.forEach((radio) => { radio.disabled = blind; });
     toggle.textContent = blind ? 'Show take details' : 'Hide take details (blind)';
+  }
+
+  document.getElementById('grid').addEventListener('click', (event) => {
+    const card = event.target.closest('.card');
+    if (!card) return;
+    if (event.target.closest('audio, button, input, a')) return;
+    select(card.dataset.takeId);
   });
 
-  grid.addEventListener('keydown', (event) => {
+  document.getElementById('grid').addEventListener('change', (event) => {
+    if (event.target.matches('input[name="take"]')) select(event.target.value);
+  });
+
+  document.getElementById('grid').addEventListener('keydown', (event) => {
     if (event.code !== 'Space') return;
-    const audio = event.target.querySelector ? event.target.querySelector('audio') : null;
+    const card = event.target.closest('.card');
+    if (!card || event.target.closest('audio, button, input, a')) return;
+    const audio = card.querySelector('audio');
     if (!audio) return;
     event.preventDefault();
     if (audio.paused) audio.play(); else audio.pause();
   });
+
+  toggle.addEventListener('click', () => setBlind(!blind));
+
+  function fallbackCopy(text) {
+    const area = document.createElement('textarea');
+    area.value = text;
+    area.setAttribute('readonly', '');
+    area.style.position = 'fixed';
+    area.style.top = '-9999px';
+    document.body.appendChild(area);
+    area.select();
+    let ok = false;
+    try {
+      ok = document.execCommand('copy');
+    } catch (error) {
+      ok = false;
+    }
+    area.remove();
+    return ok;
+  }
+
+  function flash(button, ok) {
+    if (!button.dataset.original) button.dataset.original = button.textContent;
+    button.textContent = ok ? 'Copied' : 'Copy failed';
+    window.clearTimeout(Number(button.dataset.timer || 0));
+    button.dataset.timer = String(window.setTimeout(() => {
+      button.textContent = button.dataset.original;
+    }, 1200));
+  }
+
+  async function copyText(text, button) {
+    let ok = false;
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text);
+        ok = true;
+      }
+    } catch (error) {
+      ok = false;
+    }
+    if (!ok) ok = fallbackCopy(text);
+    flash(button, ok);
+  }
+
+  copyTake.addEventListener('click', () => copyText(selected, copyTake));
+  copyCommand.addEventListener('click', () => {
+    copyText(byId.get(selected).freeze_command, copyCommand);
+  });
+  copyScript.addEventListener('click', () => {
+    copyText(byId.get(selected).text, copyScript);
+  });
+
+  renderSelection();
 </script>
 </body>
 </html>

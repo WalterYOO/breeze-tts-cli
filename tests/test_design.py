@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import csv
 import json
+import shlex
+from html.parser import HTMLParser
 from pathlib import Path
 
 import pytest
@@ -193,6 +195,31 @@ def test_report_writes_csv_markdown_reel_and_html(run, fake, isolated: Path) -> 
     assert "c004" in html
     assert "not an" in html.lower() or "aesthetic" in html.lower()
 
+    page = parse_audition(html)
+    assert page.audios == [
+        "../candidates/c001.wav",
+        "../candidates/c002.wav",
+        "../candidates/c003.wav",
+        "../candidates/c004.wav",
+    ]
+    checked = [radio for radio in page.radios if "checked" in radio]
+    assert len(checked) == 1
+    assert "Metric pick" in html
+    assert "n/a" in html
+    assert page.payload is not None
+    assert checked[0]["value"] == page.payload["recommended"]
+    assert len(page.payload["candidates"]) == 4
+    for candidate in page.payload["candidates"]:
+        assert candidate["text"]
+        assert f"--take {candidate['take_id']}" in candidate["freeze_command"]
+        assert "--as clone" in candidate["freeze_command"]
+        assert "--confirm-transcript" not in candidate["freeze_command"]
+
+    markdown = (report / "report.md").read_text(encoding="utf-8")
+    assert "## Recommendation" in markdown
+    assert "metric-based, not aesthetic" in markdown
+    assert "metric pick (not aesthetic)" in result.output
+
 
 @pytest.mark.parametrize(
     "text",
@@ -245,3 +272,89 @@ def test_report_rejects_invalid_gap(run, fake, isolated: Path, gap: str) -> None
     assert result.exit_code == 2
     assert "gap" in result.stderr.lower()
     assert not (run_dir / "report" / "metrics.csv").exists()
+
+
+class AuditionPage(HTMLParser):
+    """Collect the structural bits of audition.html we promise in tests."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.audios: list[str | None] = []
+        self.radios: list[dict[str, str | None]] = []
+        self.payload: dict[str, object] | None = None
+        self._in_payload = False
+        self._payload_chunks: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        values = dict(attrs)
+        if tag == "audio":
+            self.audios.append(values.get("src"))
+        elif tag == "input" and values.get("name") == "take":
+            self.radios.append(values)
+        elif tag == "script" and values.get("id") == "audition-payload":
+            self._in_payload = True
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "script" and self._in_payload:
+            self._in_payload = False
+            self.payload = json.loads("".join(self._payload_chunks))
+
+    def handle_data(self, data: str) -> None:
+        if self._in_payload:
+            self._payload_chunks.append(data)
+
+
+def parse_audition(html: str) -> AuditionPage:
+    page = AuditionPage()
+    page.feed(html)
+    return page
+
+
+def test_audition_escapes_script_and_preserves_payload(run, fake, isolated: Path) -> None:
+    design = isolated / "dusk.yaml"
+    tricky = "</script><script>alert('x')</script> 引号\" & 符号\n第二行"
+    spec = design_from_template("zh-late-night-radio/v1", "dusk")
+    spec.covers = [tricky]
+    dump_design_spec(spec, design)
+    run_dir = isolated / "run"
+    assert run("design", "explore", str(design), "--out", str(run_dir)).exit_code == 0
+    assert run("design", "report", str(run_dir)).exit_code == 0
+
+    html = (run_dir / "report" / "audition.html").read_text(encoding="utf-8")
+    page = parse_audition(html)
+    assert page.payload is not None
+    assert page.payload["candidates"][0]["text"] == tricky
+    assert html.count("</script>") == 2
+
+
+def test_audition_freeze_command_quotes_path_and_guards_invalid_name(
+    run, fake, isolated: Path
+) -> None:
+    design = make_design(isolated / "dusk.yaml", name="夜色")
+    run_dir = isolated / "run with spaces; and $dollar"
+    assert run("design", "explore", str(design), "--out", str(run_dir)).exit_code == 0
+    assert run("design", "report", str(run_dir)).exit_code == 0
+
+    page = parse_audition((run_dir / "report" / "audition.html").read_text(encoding="utf-8"))
+    assert page.payload is not None
+    quoted_run = shlex.quote(str(run_dir.resolve()))
+    for candidate in page.payload["candidates"]:
+        command = candidate["freeze_command"]
+        assert quoted_run in command
+        assert "--name YOUR_VOICE_NAME" in command
+
+
+def test_audition_uses_design_profile_for_inline_event_scripts(run, fake, isolated: Path) -> None:
+    design = isolated / "dusk.yaml"
+    spec = design_from_template("zh-late-night-radio/v1", "dusk")
+    spec.covers = ["[笑] 你好，今天过得怎么样？"]
+    dump_design_spec(spec, design)
+    run_dir = isolated / "run"
+    assert run("design", "explore", str(design), "--out", str(run_dir)).exit_code == 0
+    assert run("design", "report", str(run_dir)).exit_code == 0
+
+    page = parse_audition((run_dir / "report" / "audition.html").read_text(encoding="utf-8"))
+    assert page.payload is not None
+    assert all(
+        "--as design" in candidate["freeze_command"] for candidate in page.payload["candidates"]
+    )

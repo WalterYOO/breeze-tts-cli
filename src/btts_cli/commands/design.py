@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import io
 import math
+import shlex
 import signal
 import tempfile
 from datetime import datetime, timezone
@@ -21,11 +22,17 @@ from btts_cli import LICENSE_NOTICE
 from btts_cli.audio.hash import prefixed, sha256_file, sha256_text
 from btts_cli.audio.io import concat_with_gap, read_wav, write_wav_atomic
 from btts_cli.audio.metrics import METRICS_EXTRA_HINT, compute_metrics
+from btts_cli.audio.recommend import (
+    Recommendation,
+    choose_recommendation,
+    technical_flags,
+)
 from btts_cli.commands._common import (
     generate_or_raise_engine_error,
     with_error_handling,
 )
 from btts_cli.domain.design import (
+    NAME_RE,
     RESOURCE_DIR,
     compile_design,
     design_from_template,
@@ -39,6 +46,7 @@ from btts_cli.domain.recipe import build_recipe, read_recipe, recipe_path_for, w
 from btts_cli.domain.run import (
     ModelInfo,
     build_plans,
+    candidate_recipe,
     candidate_status,
     create_run,
     find_plan,
@@ -413,6 +421,7 @@ def design_report(
             wav_path, level=metrics_level, sample_rate=manifest.model.sample_rate
         )
         metric_warnings.extend(f"{plan.take_id}: {warning}" for warning in warnings)
+        recipe = candidate_recipe(run_dir, plan.take_id)
         rows.append(
             {
                 "take_id": plan.take_id,
@@ -420,9 +429,14 @@ def design_report(
                 "cfg_scale": plan.cfg_scale,
                 "cover_index": plan.cover_index,
                 "text": plan.text,
+                "truncated": recipe.finish_reason == "length"
+                or any("truncated" in warning for warning in recipe.warnings),
+                "inline_event": has_inline_event(plan.text),
                 **metrics,
             }
         )
+
+    recommendation = choose_recommendation(rows)
 
     out_dir = report_dir(run_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -454,7 +468,7 @@ def design_report(
 
     write_text_atomic(
         out_dir / "report.md",
-        _render_markdown(manifest, rows, skipped, metric_warnings, metrics_level),
+        _render_markdown(manifest, rows, skipped, metric_warnings, metrics_level, recommendation),
     )
     console.print(f"wrote {out_dir / 'report.md'}")
 
@@ -465,7 +479,9 @@ def design_report(
         console.print(f"wrote {out_dir / 'all_candidates.wav'}")
 
     if html_enabled:
-        html = _render_audition(manifest, rows, skipped, metric_warnings, metrics_level)
+        html = _render_audition(
+            manifest, run_dir, rows, skipped, metric_warnings, metrics_level, recommendation
+        )
         write_text_atomic(out_dir / "audition.html", html)
         console.print(f"wrote {out_dir / 'audition.html'}")
 
@@ -480,6 +496,9 @@ def design_report(
             "[yellow]incomplete takes skipped:[/yellow] "
             + ", ".join(f"{take} ({reason})" for take, reason in skipped)
         )
+    if recommendation is not None:
+        suffix = " (no candidate passed technical checks)" if recommendation.degraded else ""
+        console.print(f"[bold]metric pick (not aesthetic):[/bold] {recommendation.take_id}{suffix}")
     console.print(
         "[dim]Metrics are for eliminating technical failures and sorting — "
         "they are not an aesthetic judgement. Pick the final take by ear.[/dim]"
@@ -671,12 +690,18 @@ def _md(value: Any) -> str:
     return str(value)
 
 
+def _flags_text(row: dict[str, Any]) -> str:
+    flags = technical_flags(row)
+    return ", ".join(flags) if flags else "none"
+
+
 def _render_markdown(
     manifest: Any,
     rows: list[dict[str, Any]],
     skipped: list[tuple[str, str]],
     warnings: list[str],
     metrics_level: str,
+    recommendation: Recommendation | None,
 ) -> str:
     header = (
         "| take | seed | cfg | cover | duration_s | peak_dBFS | rms_dBFS | clip | "
@@ -699,6 +724,30 @@ def _render_markdown(
         f"- template: `{manifest.design.template}` (compiler {manifest.design.compiler_version})",
         f"- model digest: `{manifest.model.digest}`",
         "",
+    ]
+    if recommendation is not None:
+        chosen = next(row for row in rows if row["take_id"] == recommendation.take_id)
+        lines += [
+            "## Recommendation",
+            "",
+            f"- recommended: `{recommendation.take_id}` (metric-based, not aesthetic)",
+            f"- flags: {_flags_text(chosen)}",
+            f"- clipping: {_md(chosen['clipping_ratio'])}; "
+            f"silence: {_md(chosen['silence_ratio'])}; "
+            f"HNR: {_md(chosen['hnr_db'])}",
+        ]
+        if chosen["inline_event"]:
+            lines.append(
+                "- inline event in script: clone freeze is rejected; the page "
+                "generates an `--as design` command for this take"
+            )
+        if recommendation.degraded:
+            lines.append(
+                "- every candidate has a technical flag; this is the least-bad "
+                "pick, not a passing take"
+            )
+        lines.append("")
+    lines += [
         "## Instruction",
         "",
         f"> {manifest.design.rendered_instruction}",
@@ -722,12 +771,24 @@ def _render_markdown(
     return "\n".join(lines)
 
 
+def _page_value(value: Any) -> str:
+    return "n/a" if value is None else _md(value)
+
+
+def _freeze_command(run_dir: Path, take_id: str, name: str, as_kind: str) -> str:
+    quoted_run = shlex.quote(str(Path(run_dir).resolve()))
+    name_token = shlex.quote(name) if NAME_RE.fullmatch(name) else "YOUR_VOICE_NAME"
+    return f"btts design freeze {quoted_run} --take {take_id} --name {name_token} --as {as_kind}"
+
+
 def _render_audition(
     manifest: Any,
+    run_dir: Path,
     rows: list[dict[str, Any]],
     skipped: list[tuple[str, str]],
     warnings: list[str],
     metrics_level: str,
+    recommendation: Recommendation | None,
 ) -> str:
     env = Environment(
         loader=FileSystemLoader(str(RESOURCE_DIR)),
@@ -736,25 +797,50 @@ def _render_audition(
     )
     template = env.get_template("audition.html.j2")
     labels = [chr(ord("A") + index) for index in range(len(rows))]
+    recommended_id = recommendation.take_id if recommendation else None
     prepared = []
     for label, row in zip(labels, rows, strict=True):
+        flags = technical_flags(row)
+        # ``--as clone`` rejects inline event markers; fall back to a design
+        # profile so the copied command is actually runnable.
+        as_kind = "design" if row["inline_event"] else "clone"
         prepared.append(
             {
                 "label": label,
                 "take_id": row["take_id"],
                 "audio": f"../candidates/{row['take_id']}.wav",
+                "text": row["text"],
+                "flags": flags,
+                "flag_text": ", ".join(flags) if flags else "none",
+                "inline_event": row["inline_event"],
+                "recommended": row["take_id"] == recommended_id,
+                "freeze_command": _freeze_command(run_dir, row["take_id"], manifest.name, as_kind),
                 "duration_s": _md(row["duration_s"]),
-                "peak_dbfs": _md(row["peak_dbfs"]),
-                "rms_dbfs": _md(row["rms_dbfs"]),
-                "clipping_ratio": _md(row["clipping_ratio"]),
-                "silence_ratio": _md(row["silence_ratio"]),
-                "f0_median_hz": _md(row["f0_median_hz"]),
-                "hnr_db": _md(row["hnr_db"]),
-                "spectral_centroid_hz": _md(row["spectral_centroid_hz"]),
+                "peak_dbfs": _page_value(row["peak_dbfs"]),
+                "rms_dbfs": _page_value(row["rms_dbfs"]),
+                "clipping_ratio": _page_value(row["clipping_ratio"]),
+                "silence_ratio": _page_value(row["silence_ratio"]),
+                "f0_median_hz": _page_value(row["f0_median_hz"]),
+                "voiced_ratio": _page_value(row["voiced_ratio"]),
+                "hnr_db": _page_value(row["hnr_db"]),
+                "spectral_centroid_hz": _page_value(row["spectral_centroid_hz"]),
                 "seed": row["seed"],
                 "cfg_scale": row["cfg_scale"],
             }
         )
+    payload = {
+        "recommended": recommended_id,
+        "degraded": bool(recommendation and recommendation.degraded),
+        "candidates": [
+            {
+                "take_id": candidate["take_id"],
+                "label": candidate["label"],
+                "text": candidate["text"],
+                "freeze_command": candidate["freeze_command"],
+            }
+            for candidate in prepared
+        ],
+    }
     return template.render(
         run_id=manifest.run_id,
         name=manifest.name,
@@ -763,6 +849,7 @@ def _render_audition(
         model_digest=manifest.model.digest,
         metrics_level=metrics_level,
         candidates=prepared,
+        payload=payload,
         skipped=skipped,
         warnings=warnings,
         license_notice=LICENSE_NOTICE,
