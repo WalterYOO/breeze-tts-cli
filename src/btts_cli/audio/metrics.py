@@ -11,6 +11,8 @@ They are not an aesthetic score, and the CLI never selects a take automatically.
 
 from __future__ import annotations
 
+import importlib.metadata as importlib_metadata
+from importlib.util import find_spec
 from pathlib import Path
 from typing import Any
 
@@ -42,6 +44,57 @@ METRICS_EXTRA_HINT = (
     "install optional metrics with: pip install 'breeze-tts-cli[metrics]' "
     "(librosa + praat-parselmouth)"
 )
+
+OPTIONAL_METRICS = (
+    ("librosa", "librosa"),
+    ("parselmouth", "praat-parselmouth"),
+)
+
+
+def _optional_version(module: str, distribution: str) -> str | None:
+    """Return the installed version, or ``None`` when the module is absent."""
+    try:
+        if find_spec(module) is None:
+            return None
+    except (ImportError, ValueError):
+        return None
+    try:
+        return importlib_metadata.version(distribution)
+    except importlib_metadata.PackageNotFoundError:
+        # Importable but not installed through distribution metadata (e.g. a
+        # vendored copy); it still works, so do not report it as missing.
+        return "installed"
+
+
+def metrics_capabilities() -> dict[str, Any]:
+    """Describe which optional metric backends are available.
+
+    ``basic`` metrics only need numpy + soundfile, which are base dependencies.
+    ``full`` additionally needs librosa (F0, spectral centroid, LTAS slope and
+    band ratios) and praat-parselmouth (HNR).
+    """
+    versions = {
+        module: _optional_version(module, distribution)
+        for module, distribution in OPTIONAL_METRICS
+    }
+    missing = [
+        distribution
+        for module, distribution in OPTIONAL_METRICS
+        if versions[module] is None
+    ]
+    if not missing:
+        level = "full"
+    elif len(missing) == len(OPTIONAL_METRICS):
+        level = "basic"
+    else:
+        level = "partial"
+    return {
+        "level": level,
+        "librosa": versions["librosa"],
+        "parselmouth": versions["parselmouth"],
+        "missing": missing,
+        "hint": METRICS_EXTRA_HINT if missing else None,
+    }
 
 
 def compute_metrics(

@@ -121,7 +121,7 @@ btts say "欢迎收听今晚的节目。" --voice @dusk --direction "更轻、�
 
 | 命令 | 用途 |
 |---|---|
-| `doctor [--bench] [--json]` | 检查环境、模型文件、MPS、内存、许可证；可选执行加载 + 短句生成基准 |
+| `doctor [--bench] [--json]` | 检查环境、模型文件、MPS、内存、指标后端（basic/partial/full）、许可证；可选执行加载 + 短句生成基准 |
 | `model download [--source huggingface\|modelscope] [--repo ID] [--revision REV] [--to DIR] [--force] [--yes] [--json]` | 显式下载或续传 checkpoint，逐文件校验并写完成标记 |
 | `model verify [--model DIR] [--deep] [--json]` | 检查必需文件/分片/大小；`--deep` 重算 SHA-256 |
 | `design init FILE [--template T] [--language zh\|en]` | 写出一份可编辑的 design YAML |
