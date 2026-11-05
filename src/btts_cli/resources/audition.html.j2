@@ -144,9 +144,13 @@
       <dt>clipping</dt><dd>{{ candidate.clipping_ratio }}</dd>
       <dt>silence</dt><dd>{{ candidate.silence_ratio }}</dd>
       <dt>F0 median</dt><dd>{{ candidate.f0_median_hz }} Hz</dd>
+      <dt>F0 p10–p90</dt><dd>{{ candidate.f0_p10_hz }}–{{ candidate.f0_p90_hz }} Hz</dd>
+      <dt>F0 std</dt><dd>{{ candidate.f0_std_hz }} Hz</dd>
       <dt>voiced</dt><dd>{{ candidate.voiced_ratio }}</dd>
       <dt>HNR</dt><dd>{{ candidate.hnr_db }} dB</dd>
       <dt>centroid</dt><dd>{{ candidate.spectral_centroid_hz }} Hz</dd>
+      <dt>slope</dt><dd>{{ candidate.spectral_slope_db_per_oct }} dB/oct</dd>
+      <dt>HF/LF</dt><dd>{{ candidate.band_ratio_high_low_db }} dB</dd>
     </dl>
     <p class="script detail"><span class="script-label">script:</span> {{ candidate.text }}</p>
   </section>

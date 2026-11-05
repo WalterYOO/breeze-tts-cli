@@ -190,7 +190,7 @@ Breeze 没有可保存的音色 prompt。一次生成等于 `instruction + text 
 
 ## 指标不是评委
 
-`design report` 会测量时长、削波、静音；`full` 模式还会测 F0 中位数、HNR 和频谱质心。这些指标用于**排除和排序**技术性失败，不是审美评分；`audition.html` 的 `Metric pick` 只是按这些指标给出的默认选项，最终选择仍然由人试听决定。
+`design report` 会测量时长、削波、静音；`full` 模式还会测 F0 中位数 / p10–p90 / 标准差、HNR、频谱质心、LTAS 斜率（dB/oct）和 2–6 kHz 对 100–500 Hz 的能量比（HF/LF）。HF/LF 能区分中位 F0 相同、但气声或摩擦噪声不同的音色。这些指标用于**排除和排序**技术性失败，不是审美评分；`audition.html` 的 `Metric pick` 只是按这些指标给出的默认选项，最终选择仍然由人试听决定。
 
 ## 测试
 

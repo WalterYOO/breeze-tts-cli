@@ -52,7 +52,7 @@ instruction + text + seed + cfg_scale + model digest
 1. 手写中文 instruction，固定试听句；
 2. 按 seed / cfg 生成候选 A–I；
 3. 拼 `all_candidates.wav`（每段间隔 1 秒）；
-4. 用 F0 中位数、HNR、频谱重心做客观对比；
+4. 用 F0 分布、HNR、频谱重心、LTAS 斜率与频段能量比做客观对比；
 5. 人工挑“低 + 干净”的平衡点；
 6. 用选中的 `boy.wav` 作参考音频 + 精确转写做克隆。
 
@@ -238,7 +238,7 @@ instruction variant × seed × cfg_scale × cover script
 
 `design report` 输出：
 
-- 每个 take 的指标：时长、F0 中位数、HNR、频谱重心、削波比例、静音比例、异常短/长；
+- 每个 take 的指标：时长、F0 中位数/p10/p90/标准差、HNR、频谱重心、LTAS 斜率、2–6 kHz vs 100–500 Hz 能量比、削波比例、静音比例、异常短/长；
 - Markdown / CSV 对比表；
 - `all_candidates.wav`（默认间隔 1 秒）；
 - 离线 `audition.html`，可盲听、可看指标、本地相对路径播放；
@@ -247,7 +247,7 @@ instruction variant × seed × cfg_scale × cover script
 指标分层：
 
 - `basic`：只依赖 numpy + soundfile（时长、削波、静音、异常值）；
-- `full`：可选 `[metrics]` 依赖（F0、HNR、频谱重心）。
+- `full`：可选 `[metrics]` 依赖（F0 分布、HNR、频谱重心、LTAS 斜率、HF/LF 频段能量比）。
 
 不做自动选优。最终选择由人决定。
 
@@ -770,7 +770,7 @@ packages = ["src/btts_cli"]
 4. vendored 推理包可独立导入并加载模型（已实测 7.2 秒）。
 5. `design init` 产出可编辑 YAML；`design lint` 对缺字段、冲突描述、空泛描述给出 block/warn，离线且确定性。
 6. 默认 `design explore` 只生成 4 个候选；每个 WAV 有 sidecar；中断后 `--resume` 不重做已完成且 hash 正确的候选。
-7. `design report` 输出 CSV、Markdown 表、`all_candidates.wav` 和离线 HTML；指标包含时长、削波、静音，`full` 模式包含 F0、HNR、频谱重心。
+7. `design report` 输出 CSV、Markdown 表、`all_candidates.wav` 和离线 HTML；指标包含时长、削波、静音，`full` 模式包含 F0 分布、HNR、频谱重心、LTAS 斜率和 HF/LF 频段能量比。
 8. `design freeze --as design` 生成 design profile；`--as clone --confirm-transcript` 生成 clone profile；缺失确认、hash 不匹配、take 不完整时失败。
 9. `say --design`、`say --voice @clone`、`say --voice @clone --direction` 三条路径都输出 24kHz mono WAV 和 recipe sidecar，cfg 默认分别为 4.0 / 1.0 / 4.0。
 10. clone 路由缺少精确 `ref_text` 或未确认时拒绝执行；不自动转写。

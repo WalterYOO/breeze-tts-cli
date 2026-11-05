@@ -189,6 +189,14 @@ def test_report_writes_csv_markdown_reel_and_html(run, fake, isolated: Path) -> 
         rows = list(csv.DictReader(handle))
     assert [row["take_id"] for row in rows] == ["c001", "c002", "c003", "c004"]
     assert all(float(row["duration_s"]) > 0 for row in rows)
+    for field in (
+        "f0_p10_hz",
+        "f0_p90_hz",
+        "f0_std_hz",
+        "spectral_slope_db_per_oct",
+        "band_ratio_high_low_db",
+    ):
+        assert field in rows[0]
 
     html = (report / "audition.html").read_text(encoding="utf-8")
     assert "../candidates/c001.wav" in html
@@ -219,6 +227,30 @@ def test_report_writes_csv_markdown_reel_and_html(run, fake, isolated: Path) -> 
     assert "## Recommendation" in markdown
     assert "metric-based, not aesthetic" in markdown
     assert "metric pick (not aesthetic)" in result.output
+    assert "F0_p10–p90" in markdown
+    assert "HF/LF" in markdown
+
+
+def test_report_full_metrics_writes_spectral_shape(
+    run, fake, isolated: Path
+) -> None:
+    pytest.importorskip("librosa")
+    design = make_design(isolated / "dusk.yaml")
+    run_dir = isolated / "run"
+    assert run("design", "explore", str(design), "--out", str(run_dir)).exit_code == 0
+
+    result = run("design", "report", str(run_dir), "--metrics", "full")
+    assert result.exit_code == 0, result.output
+
+    with (run_dir / "report" / "metrics.csv").open(encoding="utf-8") as handle:
+        rows = list(csv.DictReader(handle))
+    assert all(row["f0_median_hz"] for row in rows)
+    assert all(row["f0_p10_hz"] and row["f0_p90_hz"] for row in rows)
+    assert all(row["spectral_slope_db_per_oct"] for row in rows)
+    assert all(row["band_ratio_high_low_db"] for row in rows)
+    page = (run_dir / "report" / "audition.html").read_text(encoding="utf-8")
+    assert "F0 p10–p90" in page
+    assert "HF/LF" in page
 
 
 @pytest.mark.parametrize(

@@ -451,9 +451,14 @@ def design_report(
         "clipping_ratio",
         "silence_ratio",
         "f0_median_hz",
+        "f0_p10_hz",
+        "f0_p90_hz",
+        "f0_std_hz",
         "voiced_ratio",
         "hnr_db",
         "spectral_centroid_hz",
+        "spectral_slope_db_per_oct",
+        "band_ratio_high_low_db",
         "abnormal_short",
         "abnormal_long",
     ]
@@ -690,6 +695,14 @@ def _md(value: Any) -> str:
     return str(value)
 
 
+def _f0_range(row: dict[str, Any]) -> str:
+    low = row.get("f0_p10_hz")
+    high = row.get("f0_p90_hz")
+    if low is None or high is None:
+        return "—"
+    return f"{_md(low)}–{_md(high)}"
+
+
 def _flags_text(row: dict[str, Any]) -> str:
     flags = technical_flags(row)
     return ", ".join(flags) if flags else "none"
@@ -705,15 +718,16 @@ def _render_markdown(
 ) -> str:
     header = (
         "| take | seed | cfg | cover | duration_s | peak_dBFS | rms_dBFS | clip | "
-        "silence | F0_med | HNR | centroid |\n"
-        "|---|---|---|---|---|---|---|---|---|---|---|---|\n"
+        "silence | F0_med | F0_p10–p90 | HNR | centroid | slope | HF/LF |\n"
+        "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n"
     )
     body = "".join(
         f"| {row['take_id']} | {row['seed']} | {row['cfg_scale']} | {row['cover_index']} | "
         f"{_md(row['duration_s'])} | {_md(row['peak_dbfs'])} | {_md(row['rms_dbfs'])} | "
         f"{_md(row['clipping_ratio'])} | {_md(row['silence_ratio'])} | "
-        f"{_md(row['f0_median_hz'])} | {_md(row['hnr_db'])} | "
-        f"{_md(row['spectral_centroid_hz'])} |\n"
+        f"{_md(row['f0_median_hz'])} | {_f0_range(row)} | {_md(row['hnr_db'])} | "
+        f"{_md(row['spectral_centroid_hz'])} | {_md(row['spectral_slope_db_per_oct'])} | "
+        f"{_md(row['band_ratio_high_low_db'])} |\n"
         for row in rows
     )
     lines = [
@@ -735,6 +749,8 @@ def _render_markdown(
             f"- clipping: {_md(chosen['clipping_ratio'])}; "
             f"silence: {_md(chosen['silence_ratio'])}; "
             f"HNR: {_md(chosen['hnr_db'])}",
+            f"- spectral slope: {_md(chosen['spectral_slope_db_per_oct'])} dB/oct; "
+            f"HF/LF: {_md(chosen['band_ratio_high_low_db'])} dB",
         ]
         if chosen["inline_event"]:
             lines.append(
@@ -756,6 +772,11 @@ def _render_markdown(
         "",
         "Metrics are for eliminating technical failures and sorting. "
         "They are not an aesthetic judgement; choose the final take by ear.",
+        "",
+        "`F0_p10–p90` is the pitch range, `slope` is the LTAS tilt in dB/oct "
+        "over 100–8000 Hz, and `HF/LF` is the 2–6 kHz vs 100–500 Hz energy "
+        "ratio in dB. HF/LF separates voices with the same median F0 but "
+        "different breath or friction noise.",
         "",
         header + body,
     ]
@@ -821,9 +842,14 @@ def _render_audition(
                 "clipping_ratio": _page_value(row["clipping_ratio"]),
                 "silence_ratio": _page_value(row["silence_ratio"]),
                 "f0_median_hz": _page_value(row["f0_median_hz"]),
+                "f0_p10_hz": _page_value(row["f0_p10_hz"]),
+                "f0_p90_hz": _page_value(row["f0_p90_hz"]),
+                "f0_std_hz": _page_value(row["f0_std_hz"]),
                 "voiced_ratio": _page_value(row["voiced_ratio"]),
                 "hnr_db": _page_value(row["hnr_db"]),
                 "spectral_centroid_hz": _page_value(row["spectral_centroid_hz"]),
+                "spectral_slope_db_per_oct": _page_value(row["spectral_slope_db_per_oct"]),
+                "band_ratio_high_low_db": _page_value(row["band_ratio_high_low_db"]),
                 "seed": row["seed"],
                 "cfg_scale": row["cfg_scale"],
             }
@@ -862,7 +888,7 @@ def _print_metric_table(rows: list[dict[str, Any]], metrics_level: str) -> None:
     for column in ("take", "dur", "peak", "clip", "silence"):
         table.add_column(column, justify="right")
     if metrics_level == "full":
-        for column in ("F0", "HNR", "centroid"):
+        for column in ("F0", "F0 range", "HNR", "centroid", "slope", "HF/LF"):
             table.add_column(column, justify="right")
     for row in rows:
         cells = [
@@ -875,8 +901,11 @@ def _print_metric_table(rows: list[dict[str, Any]], metrics_level: str) -> None:
         if metrics_level == "full":
             cells += [
                 _md(row["f0_median_hz"]),
+                _f0_range(row),
                 _md(row["hnr_db"]),
                 _md(row["spectral_centroid_hz"]),
+                _md(row["spectral_slope_db_per_oct"]),
+                _md(row["band_ratio_high_low_db"]),
             ]
         table.add_row(*cells)
     console.print(table)
