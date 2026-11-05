@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import random
 import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -20,7 +21,37 @@ from btts_cli.output.errors import IntegrityError, UsageError
 from btts_cli.output.json import read_json, write_json_atomic, write_text_atomic
 
 RUN_SCHEMA_VERSION = 1
-DEFAULT_SEEDS = (42, 43)
+# Every prime below 100. The default matrix samples a fresh pair per run;
+# the chosen seeds are recorded in run.json and each recipe, so takes stay
+# reproducible even though the draw itself is not.
+DEFAULT_SEEDS = (
+    2,
+    3,
+    5,
+    7,
+    11,
+    13,
+    17,
+    19,
+    23,
+    29,
+    31,
+    37,
+    41,
+    43,
+    47,
+    53,
+    59,
+    61,
+    67,
+    71,
+    73,
+    79,
+    83,
+    89,
+    97,
+)
+DEFAULT_SEED_SAMPLE = 2
 DEFAULT_CFGS = (2.5, 4.0)
 DEFAULT_MAX_NEW_TOKENS = 300
 MAX_TOKENS = 1500
@@ -194,7 +225,10 @@ def build_plans(
     covers: list[str] | None = None,
     allow_large: bool = False,
 ) -> tuple[list[CandidatePlan], MatrixSpec]:
-    seed_values = seeds or list(DEFAULT_SEEDS)
+    if seeds is None:
+        seed_values = sorted(random.sample(DEFAULT_SEEDS, DEFAULT_SEED_SAMPLE))
+    else:
+        seed_values = list(seeds)
     cfg_values = cfgs or list(DEFAULT_CFGS)
     if covers:
         cover_values = list(covers)

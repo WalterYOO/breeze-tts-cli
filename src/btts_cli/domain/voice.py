@@ -96,7 +96,7 @@ class DefaultsBlock(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     cfg_scale: CfgScale
-    seed: int = 42
+    seed: int = 19
     direction: str | None = None
 
 

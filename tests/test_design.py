@@ -17,6 +17,7 @@ from btts_cli.domain.design import (
     lint_design,
     load_design_spec,
 )
+from btts_cli.domain.run import DEFAULT_SEEDS
 from tests.helpers import make_design
 
 
@@ -110,7 +111,10 @@ def test_explore_default_matrix_writes_atomic_candidates(run, fake, isolated: Pa
 
     manifest = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
     assert len(manifest["candidates"]) == 4
-    assert manifest["matrix"]["seeds"] == [42, 43]
+    seeds = manifest["matrix"]["seeds"]
+    assert len(seeds) == 2
+    assert len(set(seeds)) == 2
+    assert all(seed in DEFAULT_SEEDS for seed in seeds)
     assert manifest["matrix"]["cfgs"] == [2.5, 4.0]
     assert manifest["completed"] == ["c001", "c002", "c003", "c004"]
 

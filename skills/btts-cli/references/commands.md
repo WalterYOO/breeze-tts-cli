@@ -83,11 +83,11 @@ instruction。这个分数衡量指令就绪度，不是音色质量。
 
 ```bash
 btts design explore FILE --out RUN_DIR [--resume] [--wide]
-                        [--seeds 42,43] [--cfgs 2.5,4.0] [--yes]
+                        [--seeds 19,97] [--cfgs 2.5,4.0] [--yes]  # seeds 省略时随机抽 2 个
                         [--max-new-tokens N] [--model DIR] [--device mps|cpu]
 ```
 
-- 默认矩阵：seeds `42,43` × cfg `2.5,4.0` × 1 个 cover = 4 个候选。
+- 默认矩阵：从 100 以内的 25 个质数中随机抽 2 个 seed × cfg `2.5,4.0` × 1 个 cover = 4 个候选。抽中的 seed 记录在 `run.json` 的 `matrix.seeds` 里；需要固定矩阵时用 `--seeds`。
 - `--wide`：使用前两个 cover，默认 8 个候选；不足两个 cover 会报错。
 - 超过 16 个候选必须同时给出显式 `--seeds`/`--cfgs` 和 `--yes`。
 - 一次模型加载跑完整矩阵；每个候选原子写入
@@ -182,7 +182,7 @@ btts say TEXT (--design FILE | --voice @NAME) [--direction TEXT]
 
 底层路由三类，CLI 入口四种，必须且只能选一个入口：
 
-1. `--design FILE` → `tts_instruction`，默认 cfg 4.0、seed 42。
+1. `--design FILE` → `tts_instruction`，默认 cfg 4.0、seed 19。
 2. `--voice @NAME`（design profile）→ `tts_instruction`，沿用 profile 的
    instruction/seed/cfg。
 3. `--voice @NAME`（clone profile）→ `ref_clone_tata`，cfg 1.0，seed 沿用 profile。

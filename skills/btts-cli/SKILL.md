@@ -80,7 +80,7 @@ btts design freeze runs/dusk-01 --take <TAKE_ID> --name dusk --as clone --confir
   页面底部可复制选中项的 take ID、freeze 命令和试听文本。盲听模式会隐藏推荐
   与选中信息。
 - lint 有 `block` 级问题（退出码 1）时不要硬跑 explore，先把问题修掉。
-- explore 默认 4 个候选（seeds `42,43` × cfg `2.5,4.0`）；`--wide` 默认 8 个。
+- explore 默认 4 个候选（从 100 以内质数池随机抽 2 个 seed × cfg `2.5,4.0`）；`--wide` 默认 8 个。抽中的 seed 见 `run.json`。
   RTF≈9，4 个约 1.5 分钟；超时给足，中断后用 `--resume` 续跑。
 - freeze 成 clone 前，必须把 CLI 打印的 source text 交给用户逐字确认，
   `--confirm-transcript` 只能在用户确认后加。参考音频 6–20 秒最佳，

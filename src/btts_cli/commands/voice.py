@@ -114,7 +114,7 @@ def voice_add(
             duration_s=round(seconds, 3),
             sample_rate=sample_rate,
         ),
-        defaults=DefaultsBlock(cfg_scale=1.0, seed=42),
+        defaults=DefaultsBlock(cfg_scale=1.0, seed=19),
         provenance=ProvenanceBlock(source="reference_audio"),
         tags=list(tags),
     )

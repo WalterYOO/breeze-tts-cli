@@ -169,7 +169,11 @@ def design_lint(file: Path, show_rendered: bool) -> None:
 )
 @click.option("--resume", is_flag=True, help="Only fill missing or hash-mismatched takes.")
 @click.option("--wide", is_flag=True, help="Use both cover scripts (8 takes by default).")
-@click.option("--seeds", default=None, help="Comma-separated seeds (explicit matrix).")
+@click.option(
+    "--seeds",
+    default=None,
+    help="Comma-separated seeds (default: 2 random primes below 100).",
+)
 @click.option("--cfgs", default=None, help="Comma-separated cfg scales (explicit matrix).")
 @click.option(
     "--yes", "allow_large", is_flag=True, help="Allow a matrix larger than 16 takes."

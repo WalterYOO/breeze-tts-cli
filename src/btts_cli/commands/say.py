@@ -103,7 +103,7 @@ def say(
         instruction = compiled.rendered_instruction
         language = compiled.language
         cfg_value = cfg if cfg is not None else 4.0
-        seed_value = seed if seed is not None else 42
+        seed_value = seed if seed is not None else 19
         kind: RouteKind = "design"
         label = compiled.spec.name
     else:

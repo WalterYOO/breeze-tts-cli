@@ -12,6 +12,9 @@ from tests.fake_engine import FakeEngine
 @pytest.fixture
 def isolated(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv("BTTS_DATA_DIR", str(tmp_path / "data"))
+    # Keep tests hermetic: a real BTTS_MODEL_DIR in the developer's shell makes
+    # resume recompute the real checkpoint digest and reject the fake one.
+    monkeypatch.delenv("BTTS_MODEL_DIR", raising=False)
     monkeypatch.chdir(tmp_path)
     (tmp_path / "outputs").mkdir(exist_ok=True)
     return tmp_path

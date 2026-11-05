@@ -21,7 +21,7 @@ voices/<name>/
 - `identity`: 结构化 design + rendered instruction + template + compiler_version
 - `design`: `seed` / `cfg_scale` / `instruction` / `max_new_tokens`（仅 design）
 - `reference`: 音频/转写文件名、SHA-256、`transcript_confirmed`、时长、采样率（仅 clone）
-- `defaults`: 默认 cfg 和 seed（`voice add` 的 seed 为 42；freeze 沿用源 take 的 seed）
+- `defaults`: 默认 cfg 和 seed（`voice add` 的 seed 为 19；freeze 沿用源 take 的 seed）
 - `provenance`: 来源 take/run、模型摘要、CLI 版本
 - `license`: 模型许可证标识
 

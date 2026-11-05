@@ -25,18 +25,18 @@ def test_freeze_as_design(run, explored: tuple[Path, Path]) -> None:
     )
     assert result.exit_code == 0, result.output
 
+    recipe = json.loads(
+        (run_dir / "candidates" / "c001.recipe.json").read_text(encoding="utf-8")
+    )
     store = VoiceStore()
     profile = store.load("dusk")
     assert profile.kind == "design"
     assert profile.design is not None
-    assert profile.design.seed == 42
+    assert profile.design.seed == recipe["operation"]["seed"]
     assert profile.design.cfg_scale == 2.5
     assert profile.reference is None
     assert profile.provenance.source_take_id == "c001"
     assert profile.provenance.source_session_id
-    recipe = json.loads(
-        (run_dir / "candidates" / "c001.recipe.json").read_text(encoding="utf-8")
-    )
     assert profile.provenance.model_digest == recipe["model"]["digest"]
 
     directory = store.path_for("dusk")

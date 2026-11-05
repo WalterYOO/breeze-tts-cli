@@ -38,7 +38,7 @@ class GenerationRequest:
     ref_audio: Path | None = None
     ref_text: str | None = None
     cfg_scale: float = 1.0
-    seed: int = 42
+    seed: int = 19
     max_new_tokens: int = 300
 
     def __post_init__(self) -> None:

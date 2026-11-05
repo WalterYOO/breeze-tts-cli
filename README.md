@@ -135,7 +135,7 @@ btts say "欢迎收听今晚的节目。" --voice @dusk --direction "更轻、�
 | `say TEXT --voice @NAME` | `ref_clone_tata`（clone）或已保存的 design 配方；clone 使用 cfg 1.0 |
 | `say TEXT --voice @NAME --direction TEXT` | `ref_edit_tata`，cfg 4.0 |
 
-explore 的默认矩阵：`seeds=42,43 × cfg=2.5,4.0` = **4 个候选**。`--wide` 会加入第二段 cover 台词 = **8 个候选**。超过 16 个候选的显式矩阵必须同时传 `--seeds`/`--cfgs` 和 `--yes`。
+explore 的默认矩阵：从 100 以内的 25 个质数里随机抽 2 个 seed × `cfg=2.5,4.0` = **4 个候选**。抽中的 seed 会写进 `run.json`，take 本身仍可复现；想要固定矩阵就用 `--seeds` 指定。`--wide` 会加入第二段 cover 台词 = **8 个候选**。超过 16 个候选的显式矩阵必须同时传 `--seeds`/`--cfgs` 和 `--yes`。
 
 ## Design YAML
 

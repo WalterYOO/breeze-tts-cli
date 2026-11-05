@@ -49,7 +49,7 @@ def test_say_design_route(run, fake, isolated: Path) -> None:
     assert call.route == "design"
     assert call.instruction
     assert call.cfg_scale == 4.0
-    assert call.seed == 42
+    assert call.seed == 19
     assert call.ref_audio is None
 
     recipe = json.loads((isolated / "out.recipe.json").read_text(encoding="utf-8"))
@@ -123,9 +123,11 @@ def test_say_design_profile_via_voice(run, fake, isolated: Path) -> None:
     result = run("say", "晚上好。", "--voice", "@dusk", "--out", str(isolated / "o.wav"))
     assert result.exit_code == 0, result.output
     call = fake.calls[-1]
+    profile = VoiceStore().load("dusk")
     assert call.route == "design"
     assert call.cfg_scale == 2.5
-    assert call.seed == 42
+    assert profile.design is not None
+    assert call.seed == profile.design.seed
 
 
 def test_say_refuses_unconfirmed_clone(run, fake, isolated: Path) -> None:

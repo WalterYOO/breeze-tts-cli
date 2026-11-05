@@ -319,7 +319,7 @@ def _run_bench(
                 text=BENCH_TEXT,
                 instruction=BENCH_INSTRUCTION,
                 cfg_scale=4.0,
-                seed=42,
+                seed=19,
                 max_new_tokens=150,
             )
         )
