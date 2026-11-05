@@ -67,3 +67,27 @@ def test_doctor_human_output_shows_metrics_row(run, isolated: Path) -> None:
 
     assert result.exit_code == 0, result.stderr
     assert "metrics" in result.output
+
+
+def test_doctor_human_hint_keeps_metrics_extra(
+    run, isolated: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from btts_cli.commands import doctor as doctor_module
+
+    monkeypatch.setattr(
+        doctor_module,
+        "metrics_capabilities",
+        lambda: {
+            "level": "partial",
+            "librosa": "1.0.0",
+            "parselmouth": None,
+            "missing": ["praat-parselmouth"],
+            "hint": metrics_module.METRICS_EXTRA_HINT,
+        },
+    )
+
+    result = run("doctor", "--model", str(isolated / "missing"))
+
+    assert result.exit_code == 0, result.stderr
+    # Rich parses ``[metrics]`` as markup and silently drops it unless escaped.
+    assert "breeze-tts-cli[metrics]" in result.output

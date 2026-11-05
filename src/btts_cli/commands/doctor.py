@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 import click
+from rich.markup import escape
 from rich.table import Table
 
 from btts_cli import LICENSE_NOTICE, __version__
@@ -210,7 +211,9 @@ def _render(report: dict[str, Any]) -> None:
     metrics = report["metrics"]
     table.add_row("metrics", _metrics_text(metrics))
     if metrics["hint"]:
-        table.add_row("metrics hint", metrics["hint"])
+        # The hint contains the literal extra syntax ``[metrics]``; escape it so
+        # Rich does not parse it as a markup tag and drop it from the command.
+        table.add_row("metrics hint", escape(metrics["hint"]))
 
     memory = report["memory"]
     table.add_row(
