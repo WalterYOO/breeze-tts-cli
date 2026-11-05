@@ -162,6 +162,115 @@ btts voice add NAME --ref REF.wav --text REF.txt --confirm-transcript
 时长：少于 1 秒失败，少于 6 秒警告，6–20 秒推荐，超过 30 秒需用户明确同意后
 才加 `--allow-long-ref`。
 
+`--tag` 会被规范化：去掉首尾空白、去重并保持顺序；空字符串、纯空白、超过
+64 字符或含控制字符的标签会在创建前被拒绝（退出码 2），不会写入 profile。
+
+## btts voice rename
+
+```bash
+btts voice rename OLD NEW
+```
+
+把音色目录 `voices/OLD` 重命名为 `voices/NEW`，并把 `profile.json` 里的
+`name` 改成 `NEW`；`voice_id`、`tags`、`provenance`、`consent`、`license`、
+`reference`（包括其中的相对文件名）等其余字段全部保留。
+
+- `NEW` 必须通过音色名校验：字母/数字开头，只含字母、数字、`-`、`_`，
+  最多 64 字符；`.`、`..`、含分隔符的名字由该校验拦截（退出码 2）。
+- `NEW` 已存在时直接拒绝（退出码 2），不会静默覆盖；没有 `--force`。
+  如果 `NEW` 是指向别处的 symlink，也按「已存在」拒绝（退出码 2）。
+- 源音色目录是 symlink、或 `profile.json` 是 symlink 时拒绝（退出码 5）。
+- 大小写不敏感文件系统（如默认 APFS）上，仅大小写不同的改名（`Dusk` → `dusk`）
+  会被拒绝并提示先用中间名：`btts voice rename Dusk Dusk-tmp` 再
+  `btts voice rename Dusk-tmp dusk`。
+- 改名后旧名立即失效：`voice list`、`voice show NEW`、`say --voice @NEW`
+  都使用新名；`voice show OLD` 报 voice not found。
+- 写入顺序是「先原子改写 `profile.json`，再对目录做同文件系统的原子 rename」。
+  如果进程正好停在两步之间，目录仍是 `OLD` 但 profile 已写 `NEW`；重新执行
+  同一条 `btts voice rename OLD NEW` 即可修复，不会丢数据。此时
+  `voice show OLD` 退出码 5，打印 error + `btts voice rename OLD NEW` 修复
+  hint，不输出 profile；`voice list` 用目录名显示并打印同样的修复 warning。
+- `rename` 会校验 clone profile 的 `ref.wav` / `ref.txt` 是否存在且未逃逸目录；
+  缺失/逃逸时退出码 5。它**不比较文件内容哈希**：参考音频内容损坏只有
+  `say` 的 SHA-256 校验会以退出码 5 报出。
+- 在 POSIX 上，profile 写入和目录操作通过 `O_DIRECTORY|O_NOFOLLOW` 的目录
+  描述符完成，并配合 store 级文件锁，避免验证后路径被并发替换为 symlink。
+
+退出码：0 成功；2 用法错误、`NEW` 已存在（含 symlink 目标）、仅大小写改名、
+`OLD` 不存在；5 存储完整性错误（源目录/profile 为 symlink、损坏的 profile、
+clone 参考文件缺失）。
+
+## btts voice tag
+
+```bash
+btts voice tag NAME [--add TAG ...] [--remove TAG ...] [--set TAG ...] [--clear]
+```
+
+不带任何操作时只列出该音色的 tags，不写文件，退出码 0；list 只做 profile
+schema/文件名校验，**不检查** clone 参考文件是否存在。带操作时只修改
+profile 的 `tags` 字段，其余字段保持不变；写入是原子的。
+
+- 无参数（以及不带 `--add`/`--remove`/`--set`/`--clear`）= list；输出格式与
+  变更后一致：`voice: NAME`、`tags: ...`，空时 `(none)`。
+- `--set` 用给定标签替换全部现有标签；**每个 tag 需要自己的 flag**：
+  `--set calm --set late-night`（`--set calm late-night` 会被 click 当作多余参数）。
+- `--clear` 清空全部标签；可与 `--add` 组合（先清空再加入），但与 `--set`、
+  `--remove` 互斥（退出码 2）。
+- `--set` 与 `--add` / `--remove` 互斥（退出码 2）。
+- `--add` 与 `--remove` 可以在同一次调用中组合。
+- 标签会去掉首尾空白后去重，并保持首次出现的顺序；空字符串、纯空白、
+  超过 64 字符或含控制字符的标签会被拒绝（退出码 2）。
+- 历史遗留的未规范化 tags 会在下一次变更时被规范化/去重；`--remove ' padded '`
+  能匹配并删除旧的 `" padded "`，`--add ' padded '` 不会产生重复变体。
+- `--remove` 不存在的标签是幂等的，不报错。
+- voice 不存在时退出码 2。`tag` 的变更操作会校验 clone profile 的参考文件
+  是否存在/逃逸（缺失时退出码 5），但同样不比较内容哈希；list 不校验。
+
+示例：
+
+```bash
+btts voice tag dusk                              # 列出 tags
+btts voice tag dusk --add calm --add narrator
+btts voice tag dusk --remove narrator
+btts voice tag dusk --set calm --set late-night
+btts voice tag dusk --clear
+btts voice tag dusk --clear --add fresh
+```
+
+退出码：0 成功（含 list）；2 用法错误、非法标签、`--set`/`--clear` 互斥冲突、
+voice 不存在；5 存储完整性错误（symlink/profile 损坏、clone 参考文件缺失）。
+
+## btts voice delete
+
+```bash
+btts voice delete NAME [--yes]
+```
+
+删除 store 根目录下的单个音色目录（含 `profile.json`、参考音频、试听和许可证）。
+
+- 默认必须交互确认（`click.confirm`，默认 No）；用户拒绝时退出码 2，
+  目录保持不变。
+- 非 TTY 环境没有 `--yes` 时直接拒绝（退出码 2），不会静默删除。
+- `--yes` 只应在用户明确要求删除时使用；CLI 不提供通配或批量删除。
+- 删除前打印目标路径和目录内容摘要（文件数、字节数）。
+- 只允许删除 store 根目录内的真实音色目录；`.`、`..`、含分隔符或通配符的名字
+  由音色名校验拦截（退出码 2）。音色目录或 `profile.json` 是 symlink 时拒绝
+  （退出码 5），递归删除不会跟随 symlink。
+- 在 POSIX 上删除前会先把目录原子改名为 `.deleting-<name>-<token>` 的
+  tombstone，再通过目录描述符删除；即使验证后路径被并发替换为 symlink，
+  也不会删除 store 外的文件。
+- 删除失败（权限、I/O 等）会以退出码 5 报错，并在 hint 中给出 tombstone 路径；
+  进程被 SIGKILL/断电时没有提示，但 `.deleting-*` 会留在 store 根目录。
+  `voice list` 始终跳过 tombstone，并在 stderr 打印带路径的 warning；
+  可用 `rm -rf "$STORE"/.deleting-*` 手动清理。
+- 删除后 `voice list` 不再显示该音色，`voice show NAME` 报 voice not found。
+- voice 不存在时退出码 2。
+- `delete` 不读取/校验 clone 的参考文件；参考文件缺失的 clone 仍可删除。
+
+退出码：0 成功；2 用法错误、用户取消、非交互环境缺少 `--yes`、voice 不存在、
+store 路径不是目录；5 存储完整性错误（symlink 目录/profile、删除失败、
+tombstone 无法清理）。
+
 ## btts voice list / btts voice show
 
 ```bash
@@ -170,7 +279,22 @@ btts voice show NAME
 ```
 
 `list` 显示 name、kind、language、voice_id、cfg、tags 和 store 路径。
-`show` 输出完整 profile JSON 和目录文件清单。
+单个损坏/非法/不可读的音色目录、无法解析的 clone 参考文件（包括 symlink loop）
+都会被跳过，不会让整个 list 失败；`.deleting-*` tombstone 总是被跳过，并在
+stderr 打印带路径的 warning。如果目录名与 `profile.json` 的 `name` 不一致
+（例如 rename 在两步之间被中断），list 用**目录名**显示并打印修复 warning，
+而不是显示尚不可寻址的“未来名字”。
+store 根路径不是目录时，list 返回空列表（exit 0，`no voices yet`）；
+rename/tag/delete 对该状态报 exit 2。store 根目录或其父目录存在但不可读
+（如 chmod 000）时，list 报 exit 2 `cannot read voice store`，不会打印 traceback。
+
+`show` 输出完整 profile JSON 和目录文件清单。目录名与 `profile.name` 不一致、
+clone 参考文件缺失/不可读/无法解析（含 symlink loop）时退出码 5，并给出修复
+提示；音色目录不可读时退出码 2。两者都不会打印 traceback。
+
+只读路径（`list`/`show`/`say --voice`）当前仍允许跟随音色目录 symlink；
+管理命令（`rename`/`tag`/`delete`）一律拒绝 symlink 目录和 symlink
+`profile.json`。
 
 ## btts say
 

@@ -3,9 +3,10 @@ name: btts-cli
 description: >-
   Operate the local `btts` CLI (breeze-tts-cli) for Breeze TTS 2 on Apple Silicon:
   doctor, model download/verify, design init/lint/explore/report/freeze,
-  voice add/list/show, and say. Use when the user mentions btts, breeze-tts,
-  Breeze TTS, 音色设计, voice design, 克隆音色 / voice clone, design explore,
-  freeze a take, or wants local TTS with a designed or cloned voice.
+  voice add/list/show/rename/tag/delete, and say. Use when the user mentions
+  btts, breeze-tts, Breeze TTS, 音色设计, voice design, 克隆音色 / voice clone,
+  design explore, freeze a take, or wants local TTS with a designed or cloned
+  voice.
 ---
 
 # btts-cli
@@ -99,7 +100,37 @@ btts voice add narrator --ref ref.wav --text ref.txt --confirm-transcript --lang
 时长：少于 1 秒失败，少于 6 秒警告，6–20 秒推荐，超过 30 秒必须由用户明确同意后
 才加 `--allow-long-ref`。
 
-### 3. 直接合成
+### 3. 管理已有音色
+
+```bash
+# 改名：同时改目录名和 profile.json 的 name；目标已存在时拒绝，绝不覆盖
+btts voice rename OLD NEW
+
+# 标签：无参数只列出 tags；--set 与 --add/--remove 互斥
+btts voice tag NAME
+btts voice tag NAME --add calm --add narrator
+btts voice tag NAME --remove narrator
+btts voice tag NAME --set calm --set narrator   # 每个 tag 一个 flag
+btts voice tag NAME --clear                     # 清空全部
+btts voice tag NAME --clear --add fresh         # 先清空再加入
+
+# 删除：交互确认；--yes 只用于用户已明确同意之后
+btts voice delete NAME
+btts voice delete NAME --yes
+```
+
+- `rename` 保留 `voice_id`、`tags`、`provenance`、`consent`、`license` 和
+  `reference` 的相对文件名，只改 `name` 和目录名。旧名立即失效，
+  `voice list` / `voice show` / `say --voice @NEW` 都使用新名。目标已存在时
+  拒绝；APFS 上仅大小写不同的改名也会被拒绝并提示先用中间名。`rename` 会
+  校验 clone 的参考文件，缺失时退出码 5。
+- `tag` 只修改 `tags` 字段；无参数时只列出 tags 且不写文件；`--remove`
+  不存在的标签是幂等的；`--clear` 与 `--set`/`--remove` 互斥。
+  `voice add --tag` 和 `voice tag` 都会对标签去空白、去重并校验。
+- `delete` 只删除 store 根目录内的单个音色目录；默认交互确认，非 TTY 环境必须
+  用户明确同意后由用户传 `--yes`。删除不会校验 clone 参考文件是否完整。
+
+### 4. 直接合成
 
 ```bash
 btts say "晚上好。" --design dusk.yaml
@@ -134,6 +165,8 @@ btts say "晚上好。" --voice @dusk --direction "更轻、更慢，带一点�
   它们有结构、哈希或交叉校验，改了会失败或破坏复现。
 - 不要把不同 design、不同矩阵或不同模型生成的 take 混进同一个 run；换新的 `--out`。
 - 不要在用户未确认时 `--force` 覆盖已有 voice，或删除 `runs/`、`voices/`。
+- **删除音色必须由用户明确确认，不要由 agent 擅自执行**：不要在用户没有明确
+  要求时运行 `voice delete`，也不要替用户加 `--yes`。
 - 不要在用户试听并选定 TAKE_ID 前执行 `design freeze`。
 - 不要把 metrics 当审美结论；最终选择必须有人试听。
 - 不要声称支持流式或实时；本机 MPS 实测 RTF≈9。

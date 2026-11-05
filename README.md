@@ -4,7 +4,7 @@
 
 ```
 design init → design lint → design explore → design report
-            → design freeze → voice add/list/show → say
+            → design freeze → voice add/list/show/rename/tag/delete → say
 ```
 
 ## 许可证——请先阅读
@@ -115,6 +115,15 @@ btts voice show dusk
 btts say "欢迎收听今晚的节目。" --design dusk.yaml
 btts say "欢迎收听今晚的节目。" --voice @dusk
 btts say "欢迎收听今晚的节目。" --voice @dusk --direction "更轻、更慢，带一点笑意"
+
+# 管理已有音色
+btts voice rename dusk late-night
+btts voice tag late-night                              # 只列出 tags
+btts voice tag late-night --add calm --add narrator
+btts voice tag late-night --set calm --set late-night  # 每个 tag 一个 flag
+btts voice tag late-night --clear
+btts voice tag late-night --clear --add fresh
+btts voice delete late-night          # 交互确认；用户明确同意后才用 --yes
 ```
 
 ## 命令（P0）
@@ -131,6 +140,9 @@ btts say "欢迎收听今晚的节目。" --voice @dusk --direction "更轻、�
 | `design freeze RUN_DIR --take ID --name NAME [--as design\|clone]` | 把某个候选固化成音色 profile |
 | `voice add NAME --ref WAV --text FILE --confirm-transcript` | 用已获授权的参考音频添加 clone profile |
 | `voice list` / `voice show NAME` | 查看本地音色库 |
+| `voice rename OLD NEW` | 同时改目录名和 profile 的 `name`；目标已存在时拒绝，绝不覆盖 |
+| `voice tag NAME [--add TAG ...] [--remove TAG ...] [--set TAG ...] [--clear]` | 无参数列出 tags；否则只修改 `tags`。`--set`/`--clear` 与相应操作互斥，每个 tag 需要自己的 flag |
+| `voice delete NAME [--yes]` | 删除单个音色目录；默认交互确认，非 TTY 环境必须显式 `--yes` |
 | `say TEXT --design FILE` | `tts_instruction`，cfg 4.0 |
 | `say TEXT --voice @NAME` | `ref_clone_tata`（clone）或已保存的 design 配方；clone 使用 cfg 1.0 |
 | `say TEXT --voice @NAME --direction TEXT` | `ref_edit_tata`，cfg 4.0 |
@@ -182,7 +194,7 @@ Breeze 没有可保存的音色 prompt。一次生成等于 `instruction + text 
 
 ## 数据与输出
 
-- 音色库：`$BTTS_DATA_DIR/voices`，或平台用户数据目录（macOS 上为 `~/Library/Application Support/btts_cli/voices`）。
+- 音色库：`$BTTS_DATA_DIR/voices`，或平台用户数据目录（macOS 上为 `~/Library/Application Support/btts_cli/voices`）。`voice rename` 会整体移动音色目录并同步 `profile.json` 的 `name`；目标检查与移动在 store 锁内完成，并使用 no-replace 原语（macOS `renamex_np(RENAME_EXCL)`、Linux `renameat2(RENAME_NOREPLACE)`），所以目标已存在、仅大小写改名、源目录/profile 为 symlink 时拒绝（指向源目录的 symlink 目标按「已存在」处理），并发 `voice add` 也不会覆盖刚改名的音色。`voice tag` 无参数只列出 tags（不检查 clone 参考文件，退出码 0），带操作时只原子改写 `tags`；`voice add --tag` 和 `voice tag` 都会去空白、去重并校验标签。`voice delete` 只删除 store 内的单个真实目录，拒绝 symlink，POSIX 上先改名为 `.deleting-*` tombstone 再用 no-follow 目录描述符删除；删除失败会以退出码 5 给出 tombstone 路径，SIGKILL/断电没有提示，但 `voice list` 会跳过 tombstone 并在 stderr 打印带路径的 warning，可手动 `rm -rf` 清理。`rename`/`tag` 变更会校验 clone 参考文件是否存在/逃逸（不比较哈希），`delete` 不校验。
 - `design explore` 写出 `runs/<run>/run.json`、`candidates/<take>.wav` 和 `<take>.recipe.json`。每个完成的候选都原子写入；`--resume` 只补齐缺失或哈希不匹配的候选。
 - `design report` 写出 `report/metrics.csv`、`report/report.md`、`report/all_candidates.wav` 和 `report/audition.html`。试听页把该 run 的全部完整候选放在一起，标出指标推荐项并默认选中，可复制选中项的 take ID、freeze 命令和试听文本。
 - `say` 在未指定 `--out` 时写出 `outputs/say-*.wav` 及 recipe sidecar。

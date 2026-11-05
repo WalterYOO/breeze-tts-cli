@@ -28,6 +28,44 @@ voices/<name>/
 写入是原子的：先复制到临时文件再 rename；最后写 `profile.json`。
 `--force` 会覆盖同名 profile 的文件，但不会删除目录里的无关文件。
 
+### 重命名、标签与删除
+
+- **rename**：`btts voice rename OLD NEW` 把整个目录 `voices/OLD` 移到
+  `voices/NEW`，并同步 `profile.json` 的 `name`。其余字段（`voice_id`、
+  `tags`、`provenance`、`consent`、`license`、`reference` 的相对文件名）
+  原样保留，目录内的文件也随之移动。实现顺序是先原子改写 profile，
+  再对目录做同一文件系统内的 `os.rename`：若进程停在两步之间，目录仍叫
+  `OLD` 而 profile 已写 `NEW`，重新执行同一条 rename 即可修复；
+  `voice show OLD` 会以退出码 5 报告目录名/profile 名不一致并提示重跑
+  rename，而不是打印 traceback；`voice list` 用目录名显示并打印同样的
+  修复 warning。目标名已存在、源目录或 `profile.json` 是 symlink 时拒绝；
+  目标目录不会被覆盖。目标检查与移动在同一 store 锁内，并使用 macOS
+  `renamex_np(RENAME_EXCL)` / Linux `renameat2(RENAME_NOREPLACE)` 的
+  no-replace 原语（不支持时降级为锁内 lexists + rename）。`voice add` 的
+  `save` 也使用同一把锁并以非 `exist_ok` 的 `mkdir` 原子占名。
+  APFS 等大小写不敏感文件系统上，仅大小写不同的改名会被拒绝并提示先用
+  中间名；指向源目录的 symlink 目标按“已存在”处理（exit 2）。
+  rename 会校验 clone 的 `ref.wav` / `ref.txt` 是否存在/逃逸，缺失时退出码 5，
+  但不比较内容哈希。
+- **tag**：`btts voice tag NAME` 不带操作时只列出 tags，不写文件，也不校验
+  clone 参考文件；`--add/--remove/--set/--clear` 只原子改写 `profile.json`
+  的 `tags` 字段，
+  目录、参考音频和哈希都不变。`--set` 替换全部标签（每个 tag 一个 flag），
+  `--clear` 先清空且可与 `--add` 组合，但两者都不能与 `--remove` 同用；
+  `--set` 也不能与 `--add`/`--remove` 同用；`--clear` 与 `--set` 同样互斥。标签会去空白、去重且保持首次
+  出现顺序，`--remove` 不存在的标签是幂等的；历史未规范化标签会在下一次
+  变更时收敛。`voice add --tag` 使用同一套规范化规则。
+- **delete**：`btts voice delete NAME` 删除 store 根目录内的单个音色目录，
+  不做通配/批量删除。默认交互确认；非 TTY 环境必须由用户确认后传 `--yes`。
+  只接受 store 根目录下的真实目录，名字校验拦截 `.`/`..` 和分隔符；目录或
+  `profile.json` 是 symlink 时拒绝。POSIX 上删除会先把目录原子改名为
+  `.deleting-<name>-<token>` tombstone，再通过 `O_NOFOLLOW` 目录描述符
+  递归删除，绝不跟随 symlink。删除失败会 exit 5 并在 hint 中给出 tombstone
+  路径；SIGKILL/断电没有提示，但 `voice list` 会跳过 tombstone 并在 stderr
+  打印带路径的 warning，可用 `rm -rf "$STORE"/.deleting-*` 清理。
+  删除不校验 clone 参考文件；删除后该音色从 `voice list` 消失，`voice show`
+  报 voice not found。
+
 ### design vs clone
 
 - **design**：保存配方（instruction + seed + cfg）。适合复现某次试听；
@@ -77,8 +115,18 @@ runs/<run>/
 ## 完整性校验
 
 - `say` 的 clone/direction 路由会校验 `ref.wav` 和 `ref.txt` 的 SHA-256，
-  不匹配退出码 5；`voice show` 只做 schema 和文件存在性检查，不比较哈希；
-  `voice list` 会静默跳过无效 profile。
+  不匹配退出码 5；`voice show` 做 schema、文件存在性和目录名/`profile.name`
+  一致性检查，但不比较哈希；`voice list` 会跳过无效 profile、`.deleting-*`
+  tombstone、隐藏条目、不可读目录和无法解析的 clone 参考文件（含 symlink loop），
+  单个坏目录不会让整个 list 失败。`voice show` 对损坏/integrity 问题报退出码 5，
+  对不可读目录报退出码 2，均不打印 traceback。
+- `voice tag` 的 list 模式只校验 profile schema/文件名，不检查 clone 参考文件；
+  变更模式会检查参考文件存在性/逃逸，但不比较内容哈希。
+- 只读路径（`list`/`show`/`say --voice`）目前允许跟随音色目录 symlink；
+  `rename`/`tag`/`delete` 拒绝 symlink 目录和 symlink `profile.json`。
+- store 根路径是普通文件时，list 返回空列表（exit 0），管理命令报 exit 2；
+  store 根目录或其父目录存在但不可读（如 chmod 000）时，list 报 exit 2
+  `cannot read voice store`，不会打印 traceback。
 - clone 路由拒绝 `transcript_confirmed=false` 的 profile。
 - `run.json` 和 `profile.json` 做的是 schema 校验与跨文件交叉校验
   （recipe/WAV、reference 路径），不是对文件自身的防篡改哈希。

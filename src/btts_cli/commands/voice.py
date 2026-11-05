@@ -1,7 +1,8 @@
-"""``btts voice``: add, list and show local profiles."""
+"""``btts voice``: add, list, show, rename, tag and delete local profiles."""
 
 from __future__ import annotations
 
+import sys
 import tempfile
 from pathlib import Path
 
@@ -21,10 +22,15 @@ from btts_cli.domain.voice import (
     VoiceProfile,
     VoiceStore,
     new_voice_id,
+    normalize_tags,
 )
-from btts_cli.output.console import console, print_license_notice
-from btts_cli.output.errors import UsageError
+from btts_cli.output.console import console, err_console, print_license_notice
+from btts_cli.output.errors import IntegrityError, UsageError
 from btts_cli.output.json import json_dumps
+
+
+def _is_interactive() -> bool:
+    return bool(sys.stdin.isatty() and sys.stdout.isatty())
 
 
 @click.group("voice")
@@ -116,7 +122,7 @@ def voice_add(
         ),
         defaults=DefaultsBlock(cfg_scale=1.0, seed=19),
         provenance=ProvenanceBlock(source="reference_audio"),
-        tags=list(tags),
+        tags=normalize_tags(tags),
     )
     with tempfile.TemporaryDirectory() as tmp:
         transcript_path = Path(tmp) / "ref.txt"
@@ -142,7 +148,17 @@ def voice_add(
 def voice_list() -> None:
     """List local voice profiles."""
     store = VoiceStore()
-    profiles = store.list()
+    profiles, tombstones, mismatches = store.scan()
+    for tombstone in tombstones:
+        err_console.print(
+            f"[yellow]warning[/yellow] leftover delete tombstone: {tombstone}"
+        )
+    for directory_name, profile_name in mismatches:
+        err_console.print(
+            f"[yellow]warning[/yellow] voice directory {directory_name!r} contains "
+            f"profile name {profile_name!r}; re-run `btts voice rename "
+            f"{directory_name} {profile_name}` to repair"
+        )
     if not profiles:
         console.print("no voices yet.")
         console.print(
@@ -173,10 +189,127 @@ def voice_list() -> None:
 def voice_show(name: str) -> None:
     """Show one voice profile and its files."""
     store = VoiceStore()
-    profile = store.load(name.removeprefix("@"))
+    requested = name.removeprefix("@")
+    profile = store.load(requested)
+    # After an interrupted rename the directory name and profile.name can
+    # disagree. Fail with a typed integrity error and a repair hint instead of
+    # listing the missing profile.name path and leaking a traceback.
+    if profile.name != requested:
+        raise IntegrityError(
+            f"voice directory {requested!r} contains profile name {profile.name!r}",
+            hint=(
+                "re-run `btts voice rename "
+                f"{requested} {profile.name}` to repair the store"
+            ),
+        )
+    directory = store.path_for(requested)
     click.echo(json_dumps(profile.model_dump(mode="json")), nl=False)
-    directory = store.path_for(profile.name)
     console.print(f"\n[dim]directory: {directory}[/dim]")
-    for path in sorted(directory.iterdir()):
-        console.print(f"  {path.name} · {path.stat().st_size} bytes")
+    try:
+        entries = sorted(directory.iterdir())
+    except OSError as exc:
+        raise IntegrityError(
+            f"cannot list voice directory: {directory}: {exc}"
+        ) from exc
+    for path in entries:
+        try:
+            size = path.stat().st_size
+        except OSError as exc:
+            raise IntegrityError(
+                f"cannot stat voice file: {path}: {exc}"
+            ) from exc
+        console.print(f"  {path.name} · {size} bytes")
     print_license_notice()
+
+
+@voice.command("rename")
+@click.argument("old_name")
+@click.argument("new_name")
+@with_error_handling
+def voice_rename(old_name: str, new_name: str) -> None:
+    """Rename a voice directory and its profile name (never overwrites)."""
+    store = VoiceStore()
+    directory = store.rename(old_name, new_name)
+    console.print(
+        f"[green]renamed[/green] voice [bold]{old_name}[/bold] → "
+        f"[bold]{new_name}[/bold]"
+    )
+    console.print(f"directory: {directory}")
+
+
+@voice.command("tag")
+@click.argument("name")
+@click.option("--add", "add_tags", multiple=True, metavar="TAG", help="Add tags.")
+@click.option(
+    "--remove",
+    "remove_tags",
+    multiple=True,
+    metavar="TAG",
+    help="Remove tags (missing tags are ignored).",
+)
+@click.option(
+    "--set",
+    "set_tags",
+    multiple=True,
+    metavar="TAG",
+    help="Replace all tags (one flag per tag); cannot be combined with --add/--remove.",
+)
+@click.option(
+    "--clear",
+    "clear_tags",
+    is_flag=True,
+    help="Remove all tags before applying --add; cannot be combined with --set/--remove.",
+)
+@with_error_handling
+def voice_tag(
+    name: str,
+    add_tags: tuple[str, ...],
+    remove_tags: tuple[str, ...],
+    set_tags: tuple[str, ...],
+    clear_tags: bool,
+) -> None:
+    """List tags, or add, remove, replace or clear them on a voice profile."""
+    if clear_tags and (set_tags or remove_tags):
+        raise UsageError("--clear cannot be combined with --set or --remove")
+    if set_tags and (add_tags or remove_tags):
+        raise UsageError("--set cannot be combined with --add or --remove")
+    store = VoiceStore()
+    if not (add_tags or remove_tags or set_tags or clear_tags):
+        tags = store.tags_for(name)
+    else:
+        tags = store.update_tags(
+            name,
+            add=add_tags,
+            remove=remove_tags,
+            replace=set_tags or None,
+            clear=clear_tags,
+        )
+    console.print(f"voice: {name}")
+    console.print(f"tags: {', '.join(tags) if tags else '(none)'}")
+
+
+@voice.command("delete")
+@click.argument("name")
+@click.option("--yes", is_flag=True, help="Skip the interactive confirmation.")
+@with_error_handling
+def voice_delete(name: str, yes: bool) -> None:
+    """Delete one voice directory.
+
+    An interactive terminal asks for confirmation; a non-interactive session
+    refuses unless --yes is given. It never prompts without a TTY.
+    """
+    store = VoiceStore()
+    directory, files, total_bytes = store.summarize(name)
+    console.print(f"about to delete voice [bold]{name}[/bold]")
+    console.print(f"path: {directory}")
+    console.print(f"contents: {files} file(s), {total_bytes} bytes")
+    if not yes:
+        if not _is_interactive():
+            raise UsageError(
+                "confirmation is required in a non-interactive session",
+                hint="pass --yes to confirm the delete",
+            )
+        if not click.confirm(f"Delete {directory}?", default=False, err=True):
+            raise UsageError("delete cancelled")
+    store.delete(name)
+    console.print(f"[green]deleted[/green] voice [bold]{name}[/bold]")
