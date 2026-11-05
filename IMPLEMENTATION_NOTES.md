@@ -57,11 +57,11 @@ uv pip install --python ../breeze-tts/.venv/bin/python -e ".[dev]"
 | `design init` | 从模板注册表（6 个模板）写出可编辑的 v1 design YAML。`--force` 覆盖。 |
 | `design lint` | 五个维度、block/warn 规则、`--show-rendered`。lint 阻断 exit 1，schema/用法错误 exit 2。 |
 | `design explore` | 默认 4 个候选（2 seeds × 2 cfgs），`--wide` 为 8 个。支持显式 `--seeds`/`--cfgs`。矩阵超过 16 个需要 `--yes`。WAV 与 recipe 依次原子写入，每个候选后更新 manifest。SIGINT 在当前候选结束后停止。`--resume` 只补齐缺失/哈希不匹配的候选。 |
-| `design report` | 生成 `metrics.csv`、`report.md`、`all_candidates.wav`、`audition.html`；可切换 `--csv/--no-csv`、`--html/--no-html`、`--reel/--no-reel`。试听页汇总该 run 的全部完整候选，标出并默认勾选指标推荐项（`Metric pick`），支持改选和复制 take ID / freeze 命令 / 台词；推荐仅排除技术失败并排序，不是审美结论。 |
+| `design report` | 生成 `metrics.csv`、`report.md`、`all_candidates.wav`、`audition.html`；可切换 `--csv/--no-csv`、`--html/--no-html`、`--reel/--no-reel`。`full` 指标含 F0 分布、HNR、频谱质心、LTAS 斜率和 HF/LF 频段能量比；试听页汇总该 run 的全部完整候选，标出并默认勾选指标推荐项（`Metric pick`），支持改选和复制 take ID / freeze 命令 / 台词；推荐仅排除技术失败并排序，不是审美结论。 |
 | `design freeze` | 从候选固化 design profile，或通过 `--as clone --confirm-transcript` 固化 clone profile（`--force`、`--allow-long-ref`）。拒绝哈希不匹配、被截断的候选、内联事件，以及不符合短/长参考策略的音频。 |
 | `voice add/list/show` | clone profile 保存 `ref.wav` + 逐字 `ref.txt` + preview。写出 `profile.json`、`LICENSE.txt`；回放时校验哈希。 |
 | `say` | 只允许一条路由：`--design`、`--voice @clone` 或 `--voice @clone --direction`。先写 WAV，再写 recipe，最后可选调用 `afplay` 播放。 |
-| 指标 | 基础指标（numpy/soundfile）：时长、dBFS、削波、静音、异常长度。完整模式在安装了 librosa/parselmouth 时增加 F0/HNR/频谱质心；否则降级并给出提示。 |
+| 指标 | 基础指标（numpy/soundfile）：时长、dBFS、削波、静音、异常长度。完整模式在安装了 librosa/parselmouth 时增加 F0 中位数/p10/p90/标准差、HNR、频谱质心、LTAS 斜率（dB/oct）和 2–6 kHz vs 100–500 Hz 能量比（HF/LF）；否则降级并给出提示。`doctor` 报告 basic/partial/full 后端状态和安装提示。 |
 | Vendoring | 固定为 `daa6cb2e…` 的恰好 12 个上游文件，含 import 改写、来源头、`vendor.lock.json`、`THIRD_PARTY_NOTICES.md`、上游 Apache-2.0 LICENSE。 |
 
 `btts --help` 和所有非推理命令启动时都不会导入 torch。只有
@@ -111,6 +111,10 @@ Chrome/Safari 用 `file://` 打开 `RUN_DIR/report/audition.html` 验收：
 - 2026-11-05 新增 `tests/test_recommend.py` 与 audition 结构测试后：
   **127 passed, 2 skipped**；另有 3 个 `tests/test_resume.py` model-checkpoint
   失败在未改动的基线上同样复现，与试听页改动无关。
+- 2026-11-05 新增 `doctor` 指标后端检查、F0 分布/LTAS 斜率/HF-LF 频段比后：
+  **139 passed, 2 skipped**；仍是同样 3 个基线 `test_resume.py` 失败。
+  用《煤说的话是不错的》真实音色验证：大树 c002 的 HF/LF 为 +9.03 dB、
+  煤 c001 为 −18.48 dB，中位 F0 分别为 90.94 / 95.24 Hz。
 - `BTTS_RUN_DOWNLOAD=1 pytest tests/test_model.py::test_modelscope_online_manifest`：
   **1 passed**；真实 ModelScope 清单 18 个文件、7.68 GB，HF 17 个文件。
 - `BTTS_RUN_MPS=1 pytest -q -m mps`：多次运行均为 **1 passed**，约 46–53s。

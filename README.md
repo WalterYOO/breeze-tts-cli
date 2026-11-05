@@ -130,7 +130,7 @@ btts voice delete late-night          # 交互确认；用户明确同意后才�
 
 | 命令 | 用途 |
 |---|---|
-| `doctor [--bench] [--json]` | 检查环境、模型文件、MPS、内存、许可证；可选执行加载 + 短句生成基准 |
+| `doctor [--bench] [--json]` | 检查环境、模型文件、MPS、内存、指标后端（basic/partial/full）、许可证；可选执行加载 + 短句生成基准 |
 | `model download [--source huggingface\|modelscope] [--repo ID] [--revision REV] [--to DIR] [--force] [--yes] [--json]` | 显式下载或续传 checkpoint，逐文件校验并写完成标记 |
 | `model verify [--model DIR] [--deep] [--json]` | 检查必需文件/分片/大小；`--deep` 重算 SHA-256 |
 | `design init FILE [--template T] [--language zh\|en]` | 写出一份可编辑的 design YAML |
@@ -202,7 +202,7 @@ Breeze 没有可保存的音色 prompt。一次生成等于 `instruction + text 
 
 ## 指标不是评委
 
-`design report` 会测量时长、削波、静音；`full` 模式还会测 F0 中位数、HNR 和频谱质心。这些指标用于**排除和排序**技术性失败，不是审美评分；`audition.html` 的 `Metric pick` 只是按这些指标给出的默认选项，最终选择仍然由人试听决定。
+`design report` 会测量时长、削波、静音；`full` 模式还会测 F0 中位数 / p10–p90 / 标准差、HNR、频谱质心、LTAS 斜率（dB/oct）和 2–6 kHz 对 100–500 Hz 的能量比（HF/LF）。HF/LF 能区分中位 F0 相同、但气声或摩擦噪声不同的音色。这些指标用于**排除和排序**技术性失败，不是审美评分；`audition.html` 的 `Metric pick` 只是按这些指标给出的默认选项，最终选择仍然由人试听决定。
 
 ## 测试
 

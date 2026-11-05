@@ -11,9 +11,11 @@ from pathlib import Path
 from typing import Any
 
 import click
+from rich.markup import escape
 from rich.table import Table
 
 from btts_cli import LICENSE_NOTICE, __version__
+from btts_cli.audio.metrics import metrics_capabilities
 from btts_cli.commands._common import with_error_handling
 from btts_cli.domain.model import read_incomplete_marker, read_marker
 from btts_cli.engine.base import (
@@ -144,6 +146,25 @@ def _gb(value: int | None) -> str:
     return f"{value / 1_000_000_000:.1f} GB"
 
 
+def _metrics_text(metrics: dict[str, Any]) -> str:
+    if metrics["level"] == "full":
+        return (
+            f"full (librosa {metrics['librosa']}, "
+            f"praat-parselmouth {metrics['parselmouth']})"
+        )
+    if metrics["level"] == "partial":
+        available = []
+        if metrics["librosa"]:
+            available.append(f"librosa {metrics['librosa']}")
+        if metrics["parselmouth"]:
+            available.append(f"praat-parselmouth {metrics['parselmouth']}")
+        return (
+            f"[yellow]partial[/yellow] ({', '.join(available)}; "
+            f"missing {', '.join(metrics['missing'])})"
+        )
+    return "[yellow]basic[/yellow] (numpy + soundfile only)"
+
+
 def _render(report: dict[str, Any]) -> None:
     table = Table(title="btts doctor", show_header=False, box=None)
     table.add_column("key", style="bold")
@@ -186,6 +207,13 @@ def _render(report: dict[str, Any]) -> None:
         table.add_row("torch", device["torch_version"])
         table.add_row("MPS available", "yes" if device["mps_available"] else "no")
         table.add_row("device", device["selected"] or "none")
+
+    metrics = report["metrics"]
+    table.add_row("metrics", _metrics_text(metrics))
+    if metrics["hint"]:
+        # The hint contains the literal extra syntax ``[metrics]``; escape it so
+        # Rich does not parse it as a markup tag and drop it from the command.
+        table.add_row("metrics hint", escape(metrics["hint"]))
 
     memory = report["memory"]
     table.add_row(
@@ -233,6 +261,7 @@ def doctor(bench: bool, as_json: bool, model_dir: Path | None, device: str | Non
         "platform": f"{platform.system()} {platform.release()} ({platform.machine()})",
         "model": _model_report(resolved),
         "device": _device_report(device),
+        "metrics": metrics_capabilities(),
         "memory": _system_memory(),
         "warnings": [],
     }
