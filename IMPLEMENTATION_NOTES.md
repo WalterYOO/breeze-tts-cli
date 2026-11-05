@@ -112,7 +112,7 @@ Chrome/Safari 用 `file://` 打开 `RUN_DIR/report/audition.html` 验收：
   **127 passed, 2 skipped**；另有 3 个 `tests/test_resume.py` model-checkpoint
   失败在未改动的基线上同样复现，与试听页改动无关。
 - 2026-11-05 新增 `doctor` 指标后端检查、F0 分布/LTAS 斜率/HF-LF 频段比后：
-  **137 passed, 2 skipped**；仍是同样 3 个基线 `test_resume.py` 失败。
+  **139 passed, 2 skipped**；仍是同样 3 个基线 `test_resume.py` 失败。
   用《煤说的话是不错的》真实音色验证：大树 c002 的 HF/LF 为 +9.03 dB、
   煤 c001 为 −18.48 dB，中位 F0 分别为 90.94 / 95.24 Hz。
 - `BTTS_RUN_DOWNLOAD=1 pytest tests/test_model.py::test_modelscope_online_manifest`：

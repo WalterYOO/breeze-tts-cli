@@ -494,7 +494,9 @@ def design_report(
     _print_metric_table(rows, metrics_level)
     if metric_warnings:
         for warning in metric_warnings:
-            console.print(f"[yellow]warning[/yellow] {warning}")
+            # Warning text can embed the install hint with its literal
+            # ``[metrics]`` extra, so escape it before Rich parses markup.
+            console.print(f"[yellow]warning[/yellow] {escape(warning)}")
         if metrics_level == "full":
             console.print(f"[dim]{escape(METRICS_EXTRA_HINT)}[/dim]")
     if skipped:

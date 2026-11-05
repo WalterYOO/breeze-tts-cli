@@ -287,7 +287,9 @@ def test_report_metrics_hint_keeps_extra(
     result = run("design", "report", str(run_dir), "--metrics", "full")
 
     assert result.exit_code == 0, result.output
-    assert "breeze-tts-cli[metrics]" in result.output
+    # Both the per-take warning and the trailing hint embed the install hint;
+    # if either path loses the literal extra, this count drops to one.
+    assert result.output.count("breeze-tts-cli[metrics]") >= 2
 
 
 @pytest.mark.parametrize(
