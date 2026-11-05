@@ -161,6 +161,20 @@ def test_full_metrics_reports_f0_distribution(tmp_path: Path) -> None:
     assert metrics["f0_std_hz"] < 6.0
 
 
+def test_full_metrics_skips_spectral_shape_for_short_clip(tmp_path: Path) -> None:
+    pytest.importorskip("librosa")
+    path = tmp_path / "short.wav"
+    _write_harmonic_tone(path, 200.0)
+    audio, sample_rate = sf.read(path)
+    sf.write(path, audio[: sample_rate // 50], sample_rate)
+
+    metrics, _ = compute_metrics(path, level="full")
+
+    assert metrics["abnormal_short"] is True
+    assert metrics["spectral_slope_db_per_oct"] is None
+    assert metrics["band_ratio_high_low_db"] is None
+
+
 def test_full_metrics_separates_low_and_high_frequency_balance(
     tmp_path: Path,
 ) -> None:

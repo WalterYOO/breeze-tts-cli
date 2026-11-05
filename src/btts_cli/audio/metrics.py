@@ -187,6 +187,10 @@ def _spectral_shape(
     2–6 kHz with 100–500 Hz, which separates a dark/clean voice from one with
     sustained breath or friction noise even when median F0 is identical.
     """
+    # Below one analysis window there is no meaningful LTAS: padding a handful
+    # of samples produces finite but meaningless slope/ratio values.
+    if audio.size < LTAS_N_FFT:
+        return None, None
     spectrum = librosa_module.stft(
         audio.astype(np.float64),
         n_fft=LTAS_N_FFT,

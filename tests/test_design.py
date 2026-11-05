@@ -232,9 +232,18 @@ def test_report_writes_csv_markdown_reel_and_html(run, fake, isolated: Path) -> 
 
 
 def test_report_full_metrics_writes_spectral_shape(
-    run, fake, isolated: Path
+    run, fake, isolated: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     pytest.importorskip("librosa")
+    from rich.console import Console
+
+    from btts_cli.commands import design as design_module
+
+    # A wide console keeps the full header labels visible instead of folding
+    # "F0 sd" across two rendered lines.
+    monkeypatch.setattr(
+        design_module, "console", Console(width=160, force_terminal=False)
+    )
     design = make_design(isolated / "dusk.yaml")
     run_dir = isolated / "run"
     assert run("design", "explore", str(design), "--out", str(run_dir)).exit_code == 0
@@ -248,9 +257,37 @@ def test_report_full_metrics_writes_spectral_shape(
     assert all(row["f0_p10_hz"] and row["f0_p90_hz"] for row in rows)
     assert all(row["spectral_slope_db_per_oct"] for row in rows)
     assert all(row["band_ratio_high_low_db"] for row in rows)
+    markdown = (run_dir / "report" / "report.md").read_text(encoding="utf-8")
+    assert "F0_sd" in markdown
+    assert "F0 sd" in result.output
+    assert rows[0]["f0_std_hz"] in markdown
     page = (run_dir / "report" / "audition.html").read_text(encoding="utf-8")
     assert "F0 p10–p90" in page
     assert "HF/LF" in page
+
+
+def test_report_metrics_hint_keeps_extra(
+    run, fake, isolated: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pytest.importorskip("librosa")
+    from btts_cli.audio import metrics as metrics_module
+    from btts_cli.commands import design as design_module
+
+    original = design_module.compute_metrics
+
+    def with_hint(*args, **kwargs):
+        metrics, warnings = original(*args, **kwargs)
+        return metrics, [*warnings, metrics_module.METRICS_EXTRA_HINT]
+
+    monkeypatch.setattr(design_module, "compute_metrics", with_hint)
+    design = make_design(isolated / "dusk.yaml")
+    run_dir = isolated / "run"
+    assert run("design", "explore", str(design), "--out", str(run_dir)).exit_code == 0
+
+    result = run("design", "report", str(run_dir), "--metrics", "full")
+
+    assert result.exit_code == 0, result.output
+    assert "breeze-tts-cli[metrics]" in result.output
 
 
 @pytest.mark.parametrize(

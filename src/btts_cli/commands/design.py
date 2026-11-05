@@ -14,6 +14,7 @@ from typing import Any
 
 import click
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
+from rich.markup import escape
 from rich.panel import Panel
 from rich.table import Table
 
@@ -495,7 +496,7 @@ def design_report(
         for warning in metric_warnings:
             console.print(f"[yellow]warning[/yellow] {warning}")
         if metrics_level == "full":
-            console.print(f"[dim]{METRICS_EXTRA_HINT}[/dim]")
+            console.print(f"[dim]{escape(METRICS_EXTRA_HINT)}[/dim]")
     if skipped:
         console.print(
             "[yellow]incomplete takes skipped:[/yellow] "
@@ -718,14 +719,15 @@ def _render_markdown(
 ) -> str:
     header = (
         "| take | seed | cfg | cover | duration_s | peak_dBFS | rms_dBFS | clip | "
-        "silence | F0_med | F0_p10–p90 | HNR | centroid | slope | HF/LF |\n"
-        "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n"
+        "silence | F0_med | F0_p10–p90 | F0_sd | HNR | centroid | slope | HF/LF |\n"
+        "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n"
     )
     body = "".join(
         f"| {row['take_id']} | {row['seed']} | {row['cfg_scale']} | {row['cover_index']} | "
         f"{_md(row['duration_s'])} | {_md(row['peak_dbfs'])} | {_md(row['rms_dbfs'])} | "
         f"{_md(row['clipping_ratio'])} | {_md(row['silence_ratio'])} | "
-        f"{_md(row['f0_median_hz'])} | {_f0_range(row)} | {_md(row['hnr_db'])} | "
+        f"{_md(row['f0_median_hz'])} | {_f0_range(row)} | {_md(row['f0_std_hz'])} | "
+        f"{_md(row['hnr_db'])} | "
         f"{_md(row['spectral_centroid_hz'])} | {_md(row['spectral_slope_db_per_oct'])} | "
         f"{_md(row['band_ratio_high_low_db'])} |\n"
         for row in rows
@@ -888,7 +890,7 @@ def _print_metric_table(rows: list[dict[str, Any]], metrics_level: str) -> None:
     for column in ("take", "dur", "peak", "clip", "silence"):
         table.add_column(column, justify="right")
     if metrics_level == "full":
-        for column in ("F0", "F0 range", "HNR", "centroid", "slope", "HF/LF"):
+        for column in ("F0", "F0 range", "F0 sd", "HNR", "centroid", "slope", "HF/LF"):
             table.add_column(column, justify="right")
     for row in rows:
         cells = [
@@ -902,6 +904,7 @@ def _print_metric_table(rows: list[dict[str, Any]], metrics_level: str) -> None:
             cells += [
                 _md(row["f0_median_hz"]),
                 _f0_range(row),
+                _md(row["f0_std_hz"]),
                 _md(row["hnr_db"]),
                 _md(row["spectral_centroid_hz"]),
                 _md(row["spectral_slope_db_per_oct"]),
