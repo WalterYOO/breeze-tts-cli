@@ -124,6 +124,11 @@ btts voice tag late-night --set calm --set late-night  # 每个 tag 一个 flag
 btts voice tag late-night --clear
 btts voice tag late-night --clear --add fresh
 btts voice delete late-night          # 交互确认；用户明确同意后才用 --yes
+
+# 导出：全部音色的完整信息 / 指定音色的音频样本 / 单个 zip
+btts voice export --all -o ~/backup/btts-voices
+btts voice export @dusk @late-night --mode wav -o ./samples
+btts voice export --all --zip -o btts-voices.zip --json
 ```
 
 ## 命令（P0）
@@ -143,6 +148,7 @@ btts voice delete late-night          # 交互确认；用户明确同意后才�
 | `voice rename OLD NEW` | 同时改目录名和 profile 的 `name`；目标已存在时拒绝，绝不覆盖 |
 | `voice tag NAME [--add TAG ...] [--remove TAG ...] [--set TAG ...] [--clear]` | 无参数列出 tags；否则只修改 `tags`。`--set`/`--clear` 与相应操作互斥，每个 tag 需要自己的 flag |
 | `voice delete NAME [--yes]` | 删除单个音色目录；默认交互确认，非 TTY 环境必须显式 `--yes` |
+| `voice export [NAME ...] [--all] [--mode full\|wav] [-o PATH] [--zip] [--json]` | 导出全部/指定/多个音色；`full` 含 profile、参考文件与配方，`wav` 只含可试听样本；目录或 zip bundle 永不覆盖已有路径 |
 | `say TEXT --design FILE` | `tts_instruction`，cfg 4.0 |
 | `say TEXT --voice @NAME` | `ref_clone_tata`（clone）或已保存的 design 配方；clone 使用 cfg 1.0 |
 | `say TEXT --voice @NAME --direction TEXT` | `ref_edit_tata`，cfg 4.0 |
@@ -198,6 +204,7 @@ Breeze 没有可保存的音色 prompt。一次生成等于 `instruction + text 
 - `design explore` 写出 `runs/<run>/run.json`、`candidates/<take>.wav` 和 `<take>.recipe.json`。每个完成的候选都原子写入；`--resume` 只补齐缺失或哈希不匹配的候选。
 - `design report` 写出 `report/metrics.csv`、`report/report.md`、`report/all_candidates.wav` 和 `report/audition.html`。试听页把该 run 的全部完整候选放在一起，标出指标推荐项并默认选中，可复制选中项的 take ID、freeze 命令和试听文本。
 - `say` 在未指定 `--out` 时写出 `outputs/say-*.wav` 及 recipe sidecar。
+- `voice export` 在目标目录或 `--zip` 里写出 `manifest.json`、`LICENSE.txt`、`README.txt`；`full` 模式会镜像每个音色目录里所有非隐藏的普通文件（通常为 `profile.json`、`LICENSE.txt`、`preview.wav`，以及 `design.yaml` 或 `ref.wav`/`ref.txt`），`wav` 模式下每个音色一个 `<name>.wav`。manifest 记录每个文件的 `sha256:` 哈希；`wav` 模式虽然不含 profile/参考文件，manifest 仍保留音色名、voice_id、kind、language、tags 和 profile 哈希。导出前会严格校验 profile、目录名、clone 参考哈希和 preview；`--all` 遇到坏音色或无权限条目会整体失败而不是静默漏导，目标已存在（含 broken symlink）或位于音色库内时拒绝，先写隐藏临时目录再用 no-replace rename 发布。`full` 可能包含参考音频、逐字转写和 consent 元数据，按个人数据处理。
 - sidecar 和 profile 中永远不含 token、私有 URL 或绝对路径。
 
 ## 指标不是评委

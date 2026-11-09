@@ -3,10 +3,10 @@ name: btts-cli
 description: >-
   Operate the local `btts` CLI (breeze-tts-cli) for Breeze TTS 2 on Apple Silicon:
   doctor, model download/verify, design init/lint/explore/report/freeze,
-  voice add/list/show/rename/tag/delete, and say. Use when the user mentions
+  voice add/list/show/rename/tag/delete/export, and say. Use when the user mentions
   btts, breeze-tts, Breeze TTS, 音色设计, voice design, 克隆音色 / voice clone,
-  design explore, freeze a take, or wants local TTS with a designed or cloned
-  voice.
+  design explore, freeze a take, export voices, or wants local TTS with a designed
+  or cloned voice.
 ---
 
 # btts-cli
@@ -117,6 +117,11 @@ btts voice tag NAME --clear --add fresh         # 先清空再加入
 # 删除：交互确认；--yes 只用于用户已明确同意之后
 btts voice delete NAME
 btts voice delete NAME --yes
+
+# 导出：全部/指定/多个；full 含完整信息，wav 只含可试听样本
+btts voice export --all -o ~/backup/btts-voices
+btts voice export @dusk narrator --mode wav -o ./samples
+btts voice export --all --zip -o btts-voices.zip --json
 ```
 
 - `rename` 保留 `voice_id`、`tags`、`provenance`、`consent`、`license` 和
@@ -129,6 +134,12 @@ btts voice delete NAME --yes
   `voice add --tag` 和 `voice tag` 都会对标签去空白、去重并校验。
 - `delete` 只删除 store 根目录内的单个音色目录；默认交互确认，非 TTY 环境必须
   用户明确同意后由用户传 `--yes`。删除不会校验 clone 参考文件是否完整。
+- `export` 选 `--all` 或显式名字（可带 `@`，多个会去重）。`--mode full`（默认）
+  镜像完整音色目录；`--mode wav` 只导出 `<name>.wav` 试听样本。两种模式都带
+  `manifest.json`、`LICENSE.txt`、`README.txt`，manifest 记录每个文件的
+  `sha256:`。导出**绝不覆盖**已有目标（没有 `--force`），目标位于音色库内也拒绝；
+  `--all` 遇到坏音色或无权限条目会整体失败（退出码 5），不会静默漏导。
+  `full` 可能含参考音频、逐字转写和 consent 元数据，按个人数据处理。
 
 ### 4. 直接合成
 
@@ -152,7 +163,7 @@ btts say "晚上好。" --voice @dusk --direction "更轻、更慢，带一点�
 | 2 | 用法/输入校验；explore 或 `say --design` 遇到 lint block | 检查参数、路径、互斥；block 先修 design |
 | 3 | 引擎 / 模型 / 设备失败 | `doctor` 看 MPS、内存、checkpoint；必要时 `--device cpu` |
 | 4 | 播放失败 | WAV 已保留；检查 `afplay` 或去掉 `--play` |
-| 5 | 完整性失败（hash / profile / take） | 不要手改文件；重新生成或用 `--resume` |
+| 5 | 完整性失败（hash / profile / take / export 源音色） | 不要手改文件；重新生成或用 `--resume`；坏音色修复后再导出 |
 | 130 | 被 Ctrl-C 中断 | 用 `--resume` 继续 explore |
 
 ## 硬性禁止
@@ -167,6 +178,9 @@ btts say "晚上好。" --voice @dusk --direction "更轻、更慢，带一点�
 - 不要在用户未确认时 `--force` 覆盖已有 voice，或删除 `runs/`、`voices/`。
 - **删除音色必须由用户明确确认，不要由 agent 擅自执行**：不要在用户没有明确
   要求时运行 `voice delete`，也不要替用户加 `--yes`。
+- 不要把 `voice export --mode full` 的 bundle 当匿名音频分享；它可能包含参考
+  音频、逐字转写和 consent 元数据。导出目标已存在时不要尝试绕过（没有
+  `--force`），让用户选新路径。
 - 不要在用户试听并选定 TAKE_ID 前执行 `design freeze`。
 - 不要把 metrics 当审美结论；最终选择必须有人试听。
 - 不要声称支持流式或实时；本机 MPS 实测 RTF≈9。

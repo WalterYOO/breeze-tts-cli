@@ -24,6 +24,7 @@ from btts_cli.domain.voice import (
     new_voice_id,
     normalize_tags,
 )
+from btts_cli.domain.voice_export import export_voices
 from btts_cli.output.console import console, err_console, print_license_notice
 from btts_cli.output.errors import IntegrityError, UsageError
 from btts_cli.output.json import json_dumps
@@ -219,6 +220,92 @@ def voice_show(name: str) -> None:
                 f"cannot stat voice file: {path}: {exc}"
             ) from exc
         console.print(f"  {path.name} · {size} bytes")
+    print_license_notice()
+
+
+@voice.command("export")
+@click.argument("names", nargs=-1)
+@click.option(
+    "--all",
+    "export_all",
+    is_flag=True,
+    help="Export every valid voice in the store (cannot be combined with names).",
+)
+@click.option(
+    "--mode",
+    type=click.Choice(["full", "wav"]),
+    default="full",
+    show_default=True,
+    help=(
+        "full: profiles, preview, license, and design/clone files; "
+        "wav: only one <voice>.wav audio sample per voice."
+    ),
+)
+@click.option(
+    "-o",
+    "--out",
+    "out_path",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Destination directory (or .zip with --zip); never overwritten.",
+)
+@click.option(
+    "--zip",
+    "archive",
+    is_flag=True,
+    help="Write one .zip archive with a single top-level directory.",
+)
+@click.option(
+    "--json",
+    "as_json",
+    is_flag=True,
+    help="Print one JSON summary on stdout (no license panel).",
+)
+@with_error_handling
+def voice_export(
+    names: tuple[str, ...],
+    export_all: bool,
+    mode: str,
+    out_path: Path | None,
+    archive: bool,
+    as_json: bool,
+) -> None:
+    """Export voices as a portable directory or .zip bundle.
+
+    Pass one or more NAME values, or --all. The bundle always includes
+    LICENSE.txt, README.txt and a manifest.json with SHA-256 hashes. Existing
+    destinations are refused; nothing is written when any selected voice is
+    missing, unsafe or inconsistent.
+    """
+    result = export_voices(
+        VoiceStore(),
+        names=names,
+        export_all=export_all,
+        mode=mode,  # type: ignore[arg-type]
+        out=out_path,
+        archive=archive,
+    )
+    for warning in result.warnings:
+        err_console.print(f"[yellow]warning[/yellow] {warning}")
+    if as_json:
+        click.echo(json_dumps(result.as_dict()), nl=False)
+        return
+    console.print(
+        f"[green]exported[/green] {len(result.voices)} voice(s) → {result.out}"
+    )
+    for voice_entry in result.voices:
+        voice_bytes = sum(int(entry["bytes"]) for entry in voice_entry["files"])
+        console.print(
+            f"  {voice_entry['name']} · {voice_entry['kind']} · "
+            f"{len(voice_entry['files'])} file(s) · {voice_bytes} bytes"
+        )
+    console.print(f"total: {result.files} file(s), {result.bytes} bytes")
+    console.print(f"manifest sha256: {result.manifest_sha256}")
+    if mode == "full":
+        console.print(
+            "[yellow]warning[/yellow] full exports can contain reference audio, "
+            "exact transcripts and profile metadata; share only with consent."
+        )
     print_license_notice()
 
 

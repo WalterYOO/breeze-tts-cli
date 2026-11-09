@@ -66,6 +66,25 @@ voices/<name>/
   删除不校验 clone 参考文件；删除后该音色从 `voice list` 消失，`voice show`
   报 voice not found。
 
+### 导出
+
+`btts voice export` 只读 store，不修改任何音色文件。`--mode full` 镜像完整音色
+目录（所有非隐藏普通文件），`--mode wav` 只导出 `<name>.wav`（来自
+`preview.wav`）。两种模式都写 `manifest.json`、`LICENSE.txt`、`README.txt`；
+manifest 记录每个导出文件的相对路径、`sha256:` 和字节数，不含宿主机绝对路径。
+
+- 选择：`--all` 或显式名字（可带 `@`，多个去重）；`--all` 遇到坏音色或无权限
+  条目会整体失败（退出码 5），不会静默漏导。
+- 默认输出目录 `./btts-voices-<UTC>`；`--zip` 输出单个 `.zip`，内含一个顶层
+  目录。目标已存在（含 broken symlink）或位于 `voices/` 内时退出码 2；
+  **没有 `--force`**。
+- 导出前校验 profile、目录名一致性、clone `ref.wav`/`ref.txt` 哈希和
+  `preview.wav`；symlink 或特殊文件退出码 5。失败时目标路径不会出现。
+- `full` 可能含参考音频、逐字转写和 consent 元数据，按个人数据处理；`wav`
+  的 manifest 仍保留音色元数据。
+- 导出在 store 锁内完成，复制时按 dev/ino/size 和 SHA-256 复核；但递归遍历是
+  路径式的，不是对非协作并发写入的事务快照。
+
 ### design vs clone
 
 - **design**：保存配方（instruction + seed + cfg）。适合复现某次试听；
@@ -122,8 +141,11 @@ runs/<run>/
   对不可读目录报退出码 2，均不打印 traceback。
 - `voice tag` 的 list 模式只校验 profile schema/文件名，不检查 clone 参考文件；
   变更模式会检查参考文件存在性/逃逸，但不比较内容哈希。
+- `voice export` 比 `say` 更严格：会校验 clone 参考文件哈希和 `preview.wav`，
+  拒绝 symlink 目录/profile/树内 symlink；`--all` 中任一坏音色都会让整个导出
+  失败，而不是像 `voice list` 那样跳过。
 - 只读路径（`list`/`show`/`say --voice`）目前允许跟随音色目录 symlink；
-  `rename`/`tag`/`delete` 拒绝 symlink 目录和 symlink `profile.json`。
+  `rename`/`tag`/`delete`/`export` 拒绝 symlink 目录和 symlink `profile.json`。
 - store 根路径是普通文件时，list 返回空列表（exit 0），管理命令报 exit 2；
   store 根目录或其父目录存在但不可读（如 chmod 000）时，list 报 exit 2
   `cannot read voice store`，不会打印 traceback。

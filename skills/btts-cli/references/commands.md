@@ -10,7 +10,8 @@
   默认优先 MPS。
 - 音色库目录：`$BTTS_DATA_DIR/voices`，否则平台用户数据目录
   （macOS: `~/Library/Application Support/btts_cli/voices`）。
-- `--json` 只出现在 `doctor`、`model download`、`model verify`；其余命令输出给人看。
+- `--json` 出现在 `doctor`、`model download`、`model verify`、`voice export`；
+  其余命令输出给人看。
 - 退出码：1 通用 / lint blocked，2 用法，3 引擎，4 播放，5 完整性，130 中断。
 - 除 `model download` 外，任何命令都不会联网或自动更新模型。
 
@@ -270,6 +271,68 @@ btts voice delete NAME [--yes]
 退出码：0 成功；2 用法错误、用户取消、非交互环境缺少 `--yes`、voice 不存在、
 store 路径不是目录；5 存储完整性错误（symlink 目录/profile、删除失败、
 tombstone 无法清理）。
+
+## btts voice export
+
+```bash
+btts voice export [NAME ...] [--all] [--mode full|wav] [-o/--out PATH]
+                  [--zip] [--json]
+```
+
+把全部或指定音色导出为可移植 bundle。`NAME` 可带一个前导 `@`；多个名字会去重并
+保持首次出现顺序。`--all` 与显式名字互斥；二者必须选一个。选择为空、
+`--all` 与名字同用、名字非法或不存在时退出码 2。
+
+模式：
+
+- `--mode full`（默认）：镜像每个音色目录中所有非隐藏普通文件
+  （`profile.json`、`LICENSE.txt`、`preview.wav`，以及 `design.yaml` 或
+  `ref.wav`/`ref.txt`）。用于备份或迁移。
+- `--mode wav`：每个音色只导出一个 `<name>.wav`，来源是 `preview.wav`；
+  不含 `profile.json`、`ref.wav`、`ref.txt`、`design.yaml`。manifest 仍记录
+  `name`/`voice_id`/`kind`/`language`/`tags`/`profile_sha256`。
+
+两种模式都写：
+
+```text
+<out>/
+  manifest.json
+  LICENSE.txt
+  README.txt
+  <voice>/...        # full
+  <voice>.wav        # wav
+```
+
+`manifest.json` 包含 `schema_version`、`kind=btts-voice-export`、UTC
+`exported_at`、`cli_version`、`mode`、license、`root_files`、排序后的 `voices`
+和 `warnings`；每个导出文件记录相对路径、`sha256:` 和字节数，不写宿主机绝对路径。
+
+输出与覆盖：
+
+- 默认目录 `./btts-voices-<UTC>`；`--zip` 时为 `./btts-voices-<UTC>.zip`。
+- `--zip` 要求 `-o` 以 `.zip` 结尾；zip 内只有一个顶层目录（按 archive stem 命名）。
+- 目标已存在（含 broken symlink）、或位于 `$BTTS_DATA_DIR/voices` 内时退出码 2。
+  **没有 `--force`**，导出永不覆盖。
+- 先写隐藏临时 sibling，再用 no-replace rename 发布；失败会清理临时路径。
+
+完整性：
+
+- 导出前严格校验 profile schema、目录名与 `profile.name` 一致、clone 的
+  `ref.wav`/`ref.txt` 存在且 SHA-256 匹配、`preview.wav` 非空。
+- 音色目录、`profile.json` 或音色树内出现 symlink、特殊文件时退出码 5。
+- `--all` 使用严格枚举：坏音色或无权限条目会让整个导出失败（退出码 5），
+  不会静默漏导；tombstone 和非音色目录会 warning 后跳过。
+- 任一校验失败都不会写出目标路径。
+
+隐私：
+
+- `full` 可能含参考音频、逐字转写、consent/provenance 和 design persona，
+  按个人数据处理。
+- `wav` 只含音频样本，但 manifest 仍保留音色元数据，不是匿名导出。
+
+`--json` 时 stdout 只有一个 JSON 文档（`out`、`archive`、`mode`、`voices`、
+`files`、`bytes`、`manifest_sha256`、`warnings`），不打印 license panel。
+退出码：0 成功；2 用法/选择/目标路径问题；5 源音色完整性；130 中断。
 
 ## btts voice list / btts voice show
 
