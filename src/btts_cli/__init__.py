@@ -5,7 +5,7 @@ The package root deliberately imports nothing heavy. In particular, importing
 engine is imported lazily by :func:`btts_cli.engine.load_engine`.
 """
 
-__version__ = "0.2.4"
+__version__ = "0.2.5"
 
 LICENSE_NOTICE = (
     "Model weights and self-hosted output are covered by the BreezeBlue "
