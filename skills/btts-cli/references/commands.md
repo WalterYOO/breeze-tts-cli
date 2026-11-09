@@ -43,7 +43,7 @@ btts completion powershell >> $PROFILE
 也可以写入专用补全文件，`--install` 绝不修改 `.bashrc`/`.zshrc`/`config.fish`：
 
 ```bash
-btts completion zsh --install      # ~/.zfunc/_btts；stderr 打印需要的 fpath 两行
+btts completion zsh --install      # ~/.zfunc/_btts；Oh My Zsh 下自动用 $ZSH_CUSTOM/completions
 btts completion fish --install     # ~/.config/fish/completions/btts.fish（自动加载）
 btts completion bash --install     # ~/.local/share/bash-completion/completions/btts
 btts completion zsh --uninstall    # 只删带 btts 标记的文件；不存在时退出码 0
@@ -54,6 +54,9 @@ btts completion zsh --install --dir DIR   # 自定义目录
 - 目标已存在但不是 `btts` 生成的、或目标是 symlink 时拒绝（退出码 2），没有
   `--force`；`--uninstall` 同样拒绝删除用户手写文件。
 - `--dir` 必须与 `--install` 或 `--uninstall` 同用；二者互斥。
+- 检测到 Oh My Zsh（或设置了 `ZSH_CUSTOM`）时，zsh 默认装到
+  `$ZSH_CUSTOM/completions/_btts`（通常是 `~/.oh-my-zsh/custom/completions/_btts`）。
+  这个目录已在 `$fpath` 中，开新 shell 即生效，不需要改 `.zshrc`。
 - PowerShell 没有统一的自动加载目录，`--install` 会拒绝（退出码 2）；
   请手工追加到 `$PROFILE`。
 
