@@ -1,6 +1,6 @@
-# breeze-tts-cli（btts）PRD v0.3
+# breeze-tts-cli（btts）PRD v0.4
 
-> 状态：P0 已实现（`fb48022`）；v0.3 把模型下载纳入 P0，支持 Hugging Face 与 ModelScope。
+> 状态：P0 已实现（`fb48022`）；v0.3 把模型下载纳入 P0；v0.4 补齐 v0.2.2–v0.2.5 落地的音色管理（list/filter/rename/tag/delete/export）与 Shell 补全，并同步 explore 默认 seed、report 推荐和 doctor 指标后端的行为。
 > 模型：Breeze-TTS-2，本地权重 `../breeze-tts/ms-models/Breeze-TTS-2`（7.2GB）。
 > 上游代码基线：`breezeblue-ai/breeze-tts` @ `daa6cb2efe5471f09369229f322d20bb956cb3c3`。
 > 参考同类工具：`../qwen-tts-cli`（借鉴模式，不照搬功能）。
@@ -13,8 +13,10 @@
 |---|---|---|
 | 运行环境 | 以 macOS MPS 为主 | 定位为**离线 / 近实时制作**，不承诺流式、不承诺实时对话 |
 | 推理代码 | 复制进本仓库，不依赖 `../breeze-tts` 路径 | 只 vendor MPS 必需源码；权重与 `qwen-tts` 不进仓库 |
-| P0 范围 | 设计工作台 + freeze + say 三路由 + 模型下载/校验 | 砍掉远程后端、批处理、项目锁、自动评分、后台任务系统 |
+| P0 范围 | 设计工作台 + freeze + say 三路由 + 模型下载/校验 + 音色管理/导出 + Shell 补全 | 砍掉远程后端、批处理、项目锁、自动评分、后台任务系统 |
 | 模型获取 | `model download` 支持 Hugging Face 与 ModelScope；`model verify` 离线校验 | 不自动下载、不后台更新；必须显式确认并接受非商业许可 |
+| 音色管理 | `list/filter/rename/tag/delete/export` 归入 P0，全部走 store 锁与 no-follow 校验 | 删除必须 TTY 确认或显式 `--yes`；导出永不覆盖已有目标 |
+| Shell 补全 | `btts completion` 作为独立顶层命令，动态补全本地音色名 | 只写专用补全文件，绝不修改用户 rc；只删除自己生成的文件 |
 
 **实测依据**
 
@@ -103,9 +105,11 @@ model download（首次）→ model verify → doctor
 → design init → design lint → design explore
 → design report（指标 + 试听卷 + HTML）
 → design freeze（--as design 或 --as clone）
-→ voice add / list / show
+→ voice add / list / filter / show → rename / tag / export
 → say（design / clone / direction 三路由）
 ```
+
+`btts completion` 是随时可用的外围命令，不参与主闭环。
 
 ### 3.2 P0 命令
 
@@ -116,15 +120,31 @@ btts model verify [--model DIR] [--deep] [--json]
 
 btts doctor [--bench] [--json]
 
-btts design init FILE
+btts design init FILE [--template T] [--name NAME] [--language zh|en] [--force]
 btts design lint FILE [--show-rendered]
 btts design explore FILE --out RUN_DIR [--resume] [--wide]
-btts design report RUN_DIR [--metrics basic|full] [--csv] [--html] [--reel]
+                        [--seeds N,N] [--cfgs N,N] [--yes]
+                        [--max-new-tokens N] [--model DIR] [--device mps|cpu]
+btts design report RUN_DIR [--metrics basic|full] [--csv/--no-csv]
+                        [--html/--no-html] [--reel/--no-reel] [--gap SEC]
 btts design freeze RUN_DIR --take ID --name NAME [--as design|clone] [--confirm-transcript]
 
 btts voice add NAME --ref WAV --text FILE --confirm-transcript
-btts voice list
+                    [--language zh|en] [--tag TAG]... [--allow-long-ref] [--force]
+btts voice list [QUERY] [--match fuzzy|prefix|exact] [--tag TAG]...
+                [--kind design|clone] [--language zh|en]
+                [--names-only] [--json]
+btts voice filter [QUERY] [--match fuzzy|prefix|exact] [--tag TAG]...
+                  [--kind design|clone] [--language zh|en]
+                  [--names-only] [--json]
 btts voice show NAME
+btts voice rename OLD NEW
+btts voice tag NAME [--add TAG]... [--remove TAG]... [--set TAG]... [--clear]
+btts voice delete NAME [--yes]
+btts voice export NAME... [--mode full|wav] [-o PATH] [--zip] [--json]
+btts voice export --all   [--mode full|wav] [-o PATH] [--zip] [--json]
+
+btts completion [SHELL] [--install|--uninstall] [--dir DIR]
 
 btts say TEXT --design FILE [--seed N] [--cfg N] [--out FILE] [--play]
 btts say TEXT --voice @NAME [--out FILE] [--play]
@@ -137,7 +157,7 @@ btts say TEXT --voice @NAME --direction TEXT [--cfg N] [--out FILE] [--play]
 - 模型自动更新、后台下载、多镜像测速切换、模型删除/缓存 GC；
 - `breeze_infer.api`、batch API、CUDA fast path；
 - 常驻 worker、后台 job 系统（P1）；
-- 项目锁、`.bvoice` 导入导出、`voice publish`；
+- 项目锁、`.bvoice` 格式与 `voice import`、`voice publish`（`voice export` 已实现，见 §4.8）；
 - 交互式终端 A/B（P0 用离线 HTML）；
 - 自动 shortlist、ASR/CER、说话人相似度、LLM 评分；
 - `direction lint/explore` 独立工作台；
@@ -152,9 +172,11 @@ MPS RTF≈9，默认必须克制：
 
 | 模式 | 矩阵 | 说明 |
 |---|---|---|
-| 默认 | 2 seed × 2 cfg = **4 个候选** | `seeds=42,43`、`cfg=2.5,4.0` |
+| 默认 | 2 seed × 2 cfg = **4 个候选** | 从 100 以内的 25 个质数中随机抽 2 个 seed；`cfg=2.5,4.0` |
 | `--wide` | **8 个候选** | 2 seed × 2 cfg × 2 试听脚本 |
 | 显式 | 16+ | 必须手动指定，并在开始前列出预计耗时、写盘大小，必要时要求 `--yes` |
+
+抽中的 seed 写入 `run.json` 的 `matrix.seeds`，并随每个 take 的 recipe 落盘，因此 take 本身仍可复现；`--resume` 复用已记录的 seed 而不是重新抽。需要固定矩阵时显式传 `--seeds`。单 seed 默认（`voice add`、`say --design`、`doctor --bench`）统一使用 `19`。
 
 试听文本默认 **2–3 秒**，`max_new_tokens≈300`。生成前打印：
 
@@ -240,8 +262,11 @@ instruction variant × seed × cfg_scale × cover script
 
 - 每个 take 的指标：时长、F0 中位数/p10/p90/标准差、HNR、频谱重心、LTAS 斜率、2–6 kHz vs 100–500 Hz 能量比、削波比例、静音比例、异常短/长；
 - Markdown / CSV 对比表；
-- `all_candidates.wav`（默认间隔 1 秒）；
+- `all_candidates.wav`（默认间隔 1 秒，`--gap` 可调）；
 - 离线 `audition.html`，可盲听、可看指标、本地相对路径播放；
+- 确定性推荐（metric pick）：先标记技术上失败的 take（异常短/长、截断、削波比例 > 0.1%、静音比例 > 60%），其余按技术标记数、削波、静音升序，再按 HNR、voiced 比例降序，最后以 take ID 稳定排序；页面默认选中推荐项，盲听模式不暴露推荐与选中信息；可复制 take ID、shell 转义后的 freeze 命令和试听文本；
+- `report.md` 同时输出 Recommendation 小节与每个 take 的技术 flags；
+- 无法计算的频谱指标留空并在报告中给出警告，不写入 NaN/Inf；
 - 明确声明：指标用于**淘汰和排序参考**，不是审美裁判。
 
 指标分层：
@@ -249,7 +274,7 @@ instruction variant × seed × cfg_scale × cover script
 - `basic`：只依赖 numpy + soundfile（时长、削波、静音、异常值）；
 - `full`：可选 `[metrics]` 依赖（F0 分布、HNR、频谱重心、LTAS 斜率、HF/LF 频段能量比）。
 
-不做自动选优。最终选择由人决定。
+推荐只用于默认选中和排序，不会自动写 profile、也不会自动执行 freeze。最终选择由人决定。
 
 ### 4.5 冻结
 
@@ -370,6 +395,98 @@ btts model verify [--model DIR] [--deep] [--json]
 - 安全：目标目录内目录 symlink、最终文件 symlink、目标本身为 symlink、目标路径中的 symlink loop；直接调用 `download_model()` 传入 `../`/绝对路径；`--force` 刷新失败后旧 marker 必须失效；incomplete 状态必须让 `doctor` 告警且浅层/深层 verify 均 `complete=false`；远端无 SHA-256 时失败留下的同尺寸文件必须删除或标记不可信；`mkdir`/写入/`os.replace` 的 `OSError` 统一映射到 exit 3。
 - 至少一条针对真实 ModelScope/HF 文件列表 API 的在线测试，显式开关（如 `BTTS_RUN_DOWNLOAD=1`），默认 skip。
 
+### 4.8 音色管理
+
+#### 4.8.1 `voice list` / `voice filter`
+
+- `QUERY` 只匹配可寻址的目录名（满足 `NAME_RE`），大小写不敏感；开头的 `@` 会被去掉；空查询报 usage error。
+- `--match fuzzy|prefix|exact`，默认 `fuzzy`（子串）、`prefix`（前缀）、`exact`（全名相等）。
+- `--tag` 可重复，语义为 AND：必须同时具备所有给定 tag；tag 按写入时的同一规则归一化。
+- `--kind`、`--language` 过滤结构化字段；所有条件 AND。
+- 无匹配是成功的空结果（exit 0），不报错。
+- `--names-only` 每行一个可寻址、非 symlink 的音色名，供管道使用；`--json` 输出单个 JSON 文档；两者互斥（exit 2）。
+- `voice filter` 与 `voice list` 完全等价，是同一实现的别名。
+- 扫描容错：tombstone、目录名与 `profile.name` 不一致、不可寻址目录名、symlink 音色都会给出警告；目录名不一致时附带 `voice rename` 修复命令。`--json` 的 `warnings` 字段同时包含这些警告。
+
+`--json` 结构：
+
+```json
+{
+  "schema_version": 1,
+  "kind": "btts-voice-list",
+  "query": "girl",
+  "match": "fuzzy",
+  "filters": {"tags": ["calm"], "kind": "clone", "language": "zh"},
+  "count": 1,
+  "voices": [
+    {
+      "name": "girl-01",
+      "kind": "clone",
+      "language": "zh",
+      "voice_id": "v_01J6R3M8Q9K2",
+      "cfg_scale": 1.0,
+      "tags": ["calm"]
+    }
+  ],
+  "warnings": []
+}
+```
+
+#### 4.8.2 `rename` / `tag` / `delete`
+
+三个命令都要求音色名通过 `validate_name`，并持有 store 锁；POSIX 上通过 `O_DIRECTORY|O_NOFOLLOW` 的目录 fd 操作，路径在校验后被替换为 symlink 也无法把写入/删除引到 store 外。
+
+- `rename OLD NEW`
+  - 永不覆盖已有目标；目标与源只差大小写（大小写不敏感文件系统）时拒绝，并提示用中间名分两步完成。
+  - 崩溃安全顺序：先在旧目录内原子改写 `profile.json` 的 `name`，再对目录做单次同文件系统 `os.rename`。中间崩溃会留下“目录名 OLD、profile 名 NEW”，重跑同一命令即可修复；不会出现任何命令都找不到的半改名状态。
+  - 目录 rename 失败时恢复原 profile 内容再报错。
+- `tag NAME`
+  - 不带任何操作 flag 时只列出当前 tags。
+  - `--add` / `--remove` 可重复；删除不存在的 tag 被忽略；`--set` 替换全部 tags；`--clear` 清空后可继续 `--add`。
+  - `--set` 不能与 `--add`/`--remove` 同用；`--clear` 不能与 `--set`/`--remove` 同用（exit 2）。
+  - 只原子改写 `tags` 字段，其余字段原样保留；legacy 未归一化 tag 在更新时收敛。
+- `delete NAME`
+  - 交互式终端询问确认，默认 `No`；非交互会话必须传 `--yes`，否则 exit 2 且不改动 store。
+  - 先把目录原子移动到 `.deleting-<name>-<hex>` tombstone，再删除内容；中断留下的 tombstone 会被 `voice list` 以警告形式报告，可用 `--names-only` 取得干净输出。
+  - 拒绝 symlink 目录、拒绝删除 store 根目录；删除失败时报告残留 tombstone 路径。
+
+#### 4.8.3 `voice export`
+
+```text
+btts voice export NAME... [--mode full|wav] [-o PATH] [--zip] [--json]
+btts voice export --all   [--mode full|wav] [-o PATH] [--zip] [--json]
+```
+
+- 选择：显式 `NAME...` 与 `--all` 二选一；名字开头的 `@` 会去掉，重复名字去重。
+- `--mode full`（默认）：导出每个音色的完整目录，包括 `profile.json`、`LICENSE.txt`、`preview.wav`，以及 design 的 `design.yaml` 或 clone 的 `ref.wav` / `ref.txt` 和目录内其他常规文件；缺 `profile.json` 或 `LICENSE.txt` 视为完整性错误。
+- `--mode wav`：每个音色只导出 `<name>.wav`（来自 `preview.wav`），不含 profile、参考音频或转写。
+- 根目录固定包含 `LICENSE.txt`、`README.txt` 与 `manifest.json`；`manifest.json` 记录每个文件的 SHA-256 和字节数，以及每个音色的 name、voice_id、kind、language、tags、profile 哈希。
+- 默认目标：当前目录下的 `btts-voices-<UTC 时间戳>`；`--zip` 时后缀为 `.zip`，归档内只有一个以归档文件名（去 `.zip`）命名的顶层目录。
+- 目标已存在一律拒绝；目标解析后位于 voice store 内也拒绝；`--zip` 目标不是 `.zip` 后缀直接 exit 2。
+- 发布方式：先写入隐藏的临时目录/临时 zip，全部成功后再用 no-replace rename 发布；任何失败都丢弃临时结果，不留下半成品。
+- 校验先于落盘：任一选中音色缺失、含 symlink、profile 与目录名不一致、`preview`/参考音频/转写哈希不符、`--all` 遇到无法严格校验的条目，或名字在大小写不敏感文件系统上冲突，都在写目标前失败（usage 2 / integrity 5）。
+- `--all` 对 tombstone 和非音色目录跳过并警告，但不会静默漏掉一个坏音色。
+- `full` 导出可能包含参考音频、逐字转写和 profile 元数据，命令必须提示隐私与授权；`--json` 的 stdout 只输出单个 JSON 文档。
+
+### 4.9 Shell 补全
+
+```text
+btts completion [SHELL] [--install|--uninstall] [--dir DIR]
+```
+
+- 支持 `bash`、`zsh`、`fish`、`powershell`（PowerShell 与实际 Click 版本相关，未实现时不列出）；省略 `SHELL` 时从 `$SHELL` 推断，无法推断则 exit 2 并列出所有支持项。
+- 默认把补全脚本写到 stdout；`--install` 写入各 shell 的专用补全文件；`--uninstall` 只删除带 btts 标记的文件。命令永远不会修改 `.bashrc`、`.zshrc` 或 `config.fish`。
+- 默认安装路径：
+  - bash：`$XDG_DATA_HOME/bash-completion/completions/btts`（默认 `~/.local/share`）
+  - zsh：存在 Oh My Zsh 时写到 `$ZSH_CUSTOM/completions/_btts`（默认 `~/.oh-my-zsh/custom/completions/_btts`，该目录通常已在 `$fpath`）；否则 `~/.zfunc/_btts`
+  - fish：`$XDG_CONFIG_HOME/fish/completions/btts.fish`（默认 `~/.config`）
+  - `--dir` 覆盖安装目录，且只能与 `--install`/`--uninstall` 同用。
+- 动态补全：TAB 时回调 `btts`，从本地 store 补全音色名，覆盖 `voice show/export/tag/delete`、`voice rename OLD`、`voice list|filter` 的 `QUERY` 和 `say --voice`。`say --voice` 固定补 `@NAME`；其余命令跟随用户输入（输入 `@` 才补 `@NAME`）。
+- 只补全可寻址、非 symlink 的音色；store 损坏或读取失败时静默返回空候选，不向 shell 的 stdout 写错误信息。
+- `--install` 幂等：内容相同打印 `up to date`；目标已存在但不是 btts 生成的文件、或目标本身是 symlink 时拒绝（exit 2）；写入使用临时文件 + 原子 rename。zsh 在 Oh My Zsh 环境下提示目录已在 `$fpath`，无需修改 rc。
+- `--uninstall` 对未安装的目标打印 `not installed`；拒绝删除不是 btts 生成的文件或 symlink。
+- PowerShell 不支持 `--install`/`--uninstall`，明确报错并提示手动追加到 `$PROFILE`。
+
 ---
 
 ## 5. 数据模型
@@ -402,12 +519,12 @@ btts model verify [--model DIR] [--deep] [--json]
     "compiler_version": "1"
   },
   "design": {
-    "seed": 42,
+    "seed": 19,
     "cfg_scale": 4.0,
     "instruction": "一位三十多岁的女性……"
   },
   "reference": null,
-  "defaults": { "cfg_scale": 4.0, "seed": 42, "direction": null },
+  "defaults": { "cfg_scale": 4.0, "seed": 19, "direction": null },
   "provenance": {
     "source": "designed",
     "source_take_id": "c007",
@@ -415,7 +532,7 @@ btts model verify [--model DIR] [--deep] [--json]
     "model_digest": "sha256:...",
     "model_id": "BreezeBlue/breeze-tts-2",
     "api_protocol": "local-mps/v1",
-    "cli_version": "0.1.0"
+    "cli_version": "0.2.5"
   },
   "license": { "model": "breezeblue-research-non-commercial" },
   "consent": null,
@@ -438,7 +555,7 @@ btts model verify [--model DIR] [--deep] [--json]
     "duration_s": 12.4,
     "sample_rate": 24000
   },
-  "defaults": { "cfg_scale": 1.0, "seed": 42, "direction": null }
+  "defaults": { "cfg_scale": 1.0, "seed": 19, "direction": null }
 }
 ```
 
@@ -466,6 +583,63 @@ btts model verify [--model DIR] [--deep] [--json]
 | `warnings` | 未知事件、过长文本、参数警告 |
 
 不写 token、私有 URL、绝对路径。原子写入。
+
+### 5.3 Export bundle
+
+```text
+btts-voices-<stamp>/
+  LICENSE.txt
+  README.txt
+  manifest.json
+  <voice>/                  # --mode full
+    profile.json
+    LICENSE.txt
+    preview.wav
+    design.yaml             # design profile
+    ref.wav / ref.txt       # clone profile
+  <voice>.wav               # --mode wav
+```
+
+`manifest.json`：
+
+```json
+{
+  "schema_version": 1,
+  "kind": "btts-voice-export",
+  "exported_at": "2026-11-09T12:34:56Z",
+  "cli_version": "0.2.5",
+  "mode": "full",
+  "license": {
+    "model": "breezeblue-research-non-commercial",
+    "cli": "Apache-2.0",
+    "notice_file": "LICENSE.txt"
+  },
+  "root_files": [
+    {"path": "LICENSE.txt", "sha256": "sha256:...", "bytes": 1024}
+  ],
+  "voices": [
+    {
+      "name": "dusk",
+      "voice_id": "v_01J6R3M8Q9K2",
+      "kind": "design",
+      "language": "zh",
+      "tags": ["narration"],
+      "profile_sha256": "sha256:...",
+      "files": [
+        {"path": "dusk/profile.json", "sha256": "sha256:...", "bytes": 2048}
+      ]
+    }
+  ],
+  "warnings": []
+}
+```
+
+规则：
+
+- 每个导出文件在写入时重算 SHA-256；凡 profile 中有预期值的文件（`profile.json`、clone 参考音频/转写、`preview.wav`）再与预期值比对，任何不一致都视为 integrity failure。
+- `profile_sha256` 覆盖原始 `profile.json` 字节；clone 的参考音频/转写哈希来自 profile 并再次校验。
+- 归档内路径统一使用 `/`，不写绝对路径、token 或私有 URL。
+- `--mode wav` 仍保留音色元数据与 profile 哈希，但不包含 profile 文件本身。
 
 ---
 
@@ -602,7 +776,7 @@ git diff
 - 自动设备：MPS 可用 → `mps`；否则明确报错，**不静默回退 CPU**。
 - `--device cpu` 仅作显式调试选项。
 - import torch 前设置 `PYTORCH_ENABLE_MPS_FALLBACK=1`。
-- `doctor` 报告：MPS 可用性、模型路径、模型文件完整、可用内存、许可证。
+- `doctor` 报告：MPS 可用性、模型路径、模型文件完整、下载来源/状态、可用内存、许可证，以及指标后端等级（`basic` / `partial` / `full`，含 librosa 与 praat-parselmouth 版本或缺失提示）。
 - 16GB 内存机器要警告：模型占用约 8GB，系统和其他应用可能吃紧。
 
 ### 7.2 不常驻 worker
@@ -646,6 +820,9 @@ breeze-tts-cli/
 │   ├── __main__.py
 │   ├── cli.py
 │   ├── commands/
+│   │   ├── _complete.py       # 动态音色名补全
+│   │   ├── _common.py
+│   │   ├── completion.py
 │   │   ├── doctor.py
 │   │   ├── design.py
 │   │   ├── model.py
@@ -659,11 +836,14 @@ breeze-tts-cli/
 │   │   ├── model.py
 │   │   ├── recipe.py
 │   │   ├── run.py
-│   │   └── voice.py
+│   │   ├── voice.py
+│   │   ├── voice_export.py
+│   │   └── voice_filter.py
 │   ├── audio/
 │   │   ├── io.py
 │   │   ├── hash.py
 │   │   ├── metrics.py
+│   │   ├── recommend.py
 │   │   └── play.py
 │   ├── output/
 │   │   ├── errors.py
@@ -675,9 +855,13 @@ breeze-tts-cli/
 │       ├── LICENSE
 │       ├── breeze_infer/
 │       └── models/
+├── skills/btts-cli/          # Agent skill：命令参考与工作流
+│   ├── SKILL.md
+│   └── references/
 └── tests/
     ├── fake_engine.py
     ├── test_cli.py
+    ├── test_completion.py
     ├── test_design.py
     ├── test_freeze.py
     ├── test_model.py
@@ -696,7 +880,9 @@ breeze-tts-cli/
 - `soundfile`、`numpy`；
 - `Jinja2`：离线 audition HTML；
 - `huggingface-hub`：Hugging Face 下载与断点续传。纯 Python，不引入 torch；
-- ModelScope 下载只用标准库 `urllib`，不新增 `modelscope` 依赖。
+- ModelScope 下载只用标准库 `urllib`，不新增 `modelscope` 依赖；
+- Shell 补全基于 `click.shell_completion`，不新增依赖；
+- 音色导出使用标准库 `zipfile` / `hashlib` / `tempfile`，推荐排序只用 `audio/recommend.py` 的纯函数，不新增依赖。
 
 不把 torch / transformers / qwen-tts 放进基础依赖。
 
@@ -709,7 +895,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "breeze-tts-cli"
-version = "0.1.0"
+version = "0.2.5"
 requires-python = ">=3.10,<3.13"
 dependencies = [
   "click>=8.1,<9",
@@ -769,7 +955,7 @@ packages = ["src/btts_cli"]
 3. `doctor --bench` 检测 MPS，记录模型加载时间、一次短生成 RTF、MPS 内存；MPS 不可用时明确失败，不静默用 CPU。
 4. vendored 推理包可独立导入并加载模型（已实测 7.2 秒）。
 5. `design init` 产出可编辑 YAML；`design lint` 对缺字段、冲突描述、空泛描述给出 block/warn，离线且确定性。
-6. 默认 `design explore` 只生成 4 个候选；每个 WAV 有 sidecar；中断后 `--resume` 不重做已完成且 hash 正确的候选。
+6. 默认 `design explore` 只生成 4 个候选（随机 2 个 100 以内质数 seed × 2 cfg）；每个 WAV 有 sidecar；中断后 `--resume` 不重做已完成且 hash 正确的候选，并复用 `run.json` 记录的 seed。
 7. `design report` 输出 CSV、Markdown 表、`all_candidates.wav` 和离线 HTML；指标包含时长、削波、静音，`full` 模式包含 F0 分布、HNR、频谱重心、LTAS 斜率和 HF/LF 频段能量比。
 8. `design freeze --as design` 生成 design profile；`--as clone --confirm-transcript` 生成 clone profile；缺失确认、hash 不匹配、take 不完整时失败。
 9. `say --design`、`say --voice @clone`、`say --voice @clone --direction` 三条路径都输出 24kHz mono WAV 和 recipe sidecar，cfg 默认分别为 4.0 / 1.0 / 4.0。
@@ -784,6 +970,12 @@ packages = ["src/btts_cli"]
 18. 中断后重跑可断点续传；大小或 SHA-256 不符返回 exit 5；失败后 `.btts-model.incomplete.json` 使 `doctor` 告警且 verify 不通过，成功后才删除；`--force` 不删除目标目录中的无关文件。
 19. `model verify --json` 与 `model download --json` 的成功路径 stdout 都可被严格 JSON 解析；失败时 stdout 保持为空或单一 JSON，错误只写 stderr；`model` 命令不导入 torch。
 20. HF 下载使用 `huggingface-hub`；ModelScope 下载不要求安装 `modelscope` 包。
+21. `voice list` / `voice filter` 支持 `fuzzy`/`prefix`/`exact`、多个 `--tag` 的 AND 语义、`--kind`、`--language`；`--names-only` 每行一个可寻址名字，`--json` 可严格解析，两者互斥时 exit 2；无匹配 exit 0。
+22. `voice rename` 永不覆盖；目标与源仅大小写不同时给出中间名提示；模拟“profile 已改、目录未改”的中断后重跑同一命令可修复。`voice tag` 的 `--set`/`--clear` 互斥规则正确，且只改写 tags。`voice delete` 在非交互会话缺少 `--yes` 时 exit 2 且不删除；残留 tombstone 会被 `voice list` 警告。
+23. `voice export` 的 full/wav 布局与 `manifest.json` 哈希正确；目标已存在、目标位于 store 内、缺文件、哈希不符、symlink、大小写冲突都在写盘前失败且不留半成品；`--zip` 归档只有一个顶层目录；`--json` stdout 可严格解析。
+24. `btts completion` 对 bash/zsh/fish（以及当前 Click 支持的 powershell）输出脚本；省略 `SHELL` 时按 `$SHELL` 推断；动态补全覆盖 `voice show/export/tag/delete`、`voice rename OLD`、`voice list|filter QUERY` 和 `say --voice`，并正确镜像 `@` 前缀。
+25. `completion --install` 幂等；拒绝覆盖非 btts 生成的文件与 symlink；`--uninstall` 只删除带标记的文件；任何路径都不修改 rc；`--dir` 只能与 `--install`/`--uninstall` 同用；zsh 在 Oh My Zsh 环境下安装到 `$ZSH_CUSTOM/completions` 并提示无需改 rc。
+26. `doctor` 在 `basic`/`partial`/`full` 三种指标后端状态下给出正确等级与缺失提示；`design explore` 未给 `--seeds` 时抽取 2 个 100 以内质数并写入 `run.json`，`--resume` 复用；`design report` 的推荐排序确定、默认选中但不自动 freeze，盲听模式不暴露推荐。
 
 ---
 
@@ -796,7 +988,7 @@ packages = ["src/btts_cli"]
 - `design audition` 交互式盲听、偏好记录、胜率 / Bradley-Terry；
 - `design stability`：同一 take 换多文本，测 F0 / 频谱重心漂移；
 - `design shortlist`：客观淘汰，不做审美裁判；
-- `voice preview/rm/export/import`；
+- `voice preview/import`；
 - `direction lint/explore`；
 - `text lint`；
 - `batch plan/run`；
@@ -830,15 +1022,20 @@ packages = ["src/btts_cli"]
 | 下载 7.7GB 占满磁盘 | 下载失败或系统异常 | 下载前检查剩余空间（≥1.05 倍），不足直接 exit 2 |
 | 下载内容与许可被误解 | 用户误以为可商用 | 下载前打印来源、大小与非商业许可；确认后才联网 |
 | 镜像文件被替换/损坏 | 加载失败或行为异常 | ModelScope 逐文件 `Sha256`、HF `huggingface-hub` 校验；`model verify --deep` 可重算 |
+| full 导出包含参考音频/逐字转写 | 隐私或授权泄露 | `full` 模式显式打印警告；`wav` 模式不含 profile；导出前严格校验来源一致性 |
+| 补全脚本写入用户目录 | 覆盖用户已有文件 | 只覆盖带 btts 标记的文件；拒绝 symlink；不修改 rc；安装幂等 |
+| rename/delete 中断 | 目录名与 profile 名不一致或残留 tombstone | 重跑同一命令可修复；`voice list` / `show` / `export` 给出修复提示或 tombstone 警告 |
 
 ---
 
-## 12. 下一步
+## 12. 版本与下一步
 
-P0 主体已完成并通过 Codex 终审（见 `IMPLEMENTATION_NOTES.md`）。v0.3 追加：
+v0.4 对应包版本 `0.2.5`。P0 主体、模型下载、音色管理与 Shell 补全均已实现。
 
-1. 实现 `model verify`（离线完整性 + 可选 `--deep` 哈希）；
-2. 实现 `model download --source huggingface`（`huggingface-hub`，断点续传）；
-3. 实现 `model download --source modelscope`（标准库 HTTP，逐文件 SHA-256）；
-4. 接入 `doctor` 的下载来源与未完成下载提示；
-5. fake provider / 本地 HTTP 单测 + 受限在线测试，再由 Codex 复审后提交。
+后续按 §10 P1 推进：
+
+1. 补一条真实 shell 冒烟（zsh / fish），覆盖 Oh My Zsh 与非 OMZ 两种安装路径。
+2. `voice import` 与 `voice preview`，与 export bundle 的 `manifest.json` 对齐。
+3. `worker start|status|stop`（Unix socket + JSONL，避免大块音频走 RPC）。
+4. `design stability` 与 `design shortlist`：漂移检测和客观淘汰，不做审美裁判。
+5. `direction lint/explore`、`batch plan/run`、`replay`。

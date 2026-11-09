@@ -40,13 +40,28 @@ def _filename(shell: str) -> str:
     return {"bash": "btts", "zsh": "_btts", "fish": "btts.fish"}[shell]
 
 
+def _oh_my_zsh_completion() -> Path | None:
+    """Return Oh My Zsh's user completion path, which is already in ``$fpath``.
+
+    Writing there avoids asking the user to edit ``~/.zshrc``: Oh My Zsh adds
+    ``$ZSH_CUSTOM/completions`` to ``fpath`` before calling ``compinit``.
+    """
+    custom = os.environ.get("ZSH_CUSTOM")
+    if custom:
+        return Path(custom).expanduser() / "completions" / "_btts"
+    omz = Path.home() / ".oh-my-zsh"
+    if omz.is_dir():
+        return omz / "custom" / "completions" / "_btts"
+    return None
+
+
 def _default_install_path(shell: str) -> Path:
     if shell == "bash":
         base = os.environ.get("XDG_DATA_HOME")
         root = Path(base).expanduser() if base else Path.home() / ".local" / "share"
         return root / "bash-completion" / "completions" / "btts"
     if shell == "zsh":
-        return Path.home() / ".zfunc" / "_btts"
+        return _oh_my_zsh_completion() or Path.home() / ".zfunc" / "_btts"
     if shell == "fish":
         base = os.environ.get("XDG_CONFIG_HOME")
         root = Path(base).expanduser() if base else Path.home() / ".config"
@@ -150,10 +165,17 @@ def _print_install_hint(shell: str, target: Path, *, custom_dir: bool) -> None:
                 err=True,
             )
     elif shell == "zsh":
-        directory = shlex.quote(str(target.parent))
-        click.echo("add to ~/.zshrc before compinit:", err=True)
-        click.echo(f"  fpath=({directory} $fpath)", err=True)
-        click.echo("  autoload -Uz compinit && compinit", err=True)
+        if target == _oh_my_zsh_completion():
+            click.echo(
+                "Oh My Zsh detected: this directory is already in $fpath; "
+                "open a new shell (no rc edit needed).",
+                err=True,
+            )
+        else:
+            directory = shlex.quote(str(target.parent))
+            click.echo("add to ~/.zshrc before compinit:", err=True)
+            click.echo(f"  fpath=({directory} $fpath)", err=True)
+            click.echo("  autoload -Uz compinit && compinit", err=True)
     elif shell == "fish":
         if custom_dir:
             click.echo(f"add to config.fish: source {quoted}", err=True)

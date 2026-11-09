@@ -239,6 +239,35 @@ def test_completion_install_then_uninstall(
     assert "not installed" in missing.output
 
 
+def test_completion_install_uses_oh_my_zsh_completions(
+    run, tmp_path: Path, monkeypatch
+) -> None:
+    home = tmp_path / "home"
+    (home / ".oh-my-zsh" / "custom").mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.delenv("ZSH_CUSTOM", raising=False)
+    result = run("completion", "zsh", "--install")
+    assert result.exit_code == 0, result.output
+    target = home / ".oh-my-zsh" / "custom" / "completions" / "_btts"
+    assert target.is_file()
+    assert "already in $fpath" in result.output
+
+    removed = run("completion", "zsh", "--uninstall")
+    assert removed.exit_code == 0, removed.output
+    assert not target.exists()
+
+
+def test_completion_install_respects_zsh_custom(
+    run, tmp_path: Path, monkeypatch
+) -> None:
+    custom = tmp_path / "custom-zsh"
+    custom.mkdir()
+    monkeypatch.setenv("ZSH_CUSTOM", str(custom))
+    result = run("completion", "zsh", "--install")
+    assert result.exit_code == 0, result.output
+    assert (custom / "completions" / "_btts").is_file()
+
+
 def test_completion_install_refuses_a_foreign_file(run, tmp_path: Path) -> None:
     target_dir = tmp_path / "completions"
     target_dir.mkdir()
