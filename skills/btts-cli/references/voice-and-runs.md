@@ -28,6 +28,20 @@ voices/<name>/
 写入是原子的：先复制到临时文件再 rename；最后写 `profile.json`。
 `--force` 会覆盖同名 profile 的文件，但不会删除目录里的无关文件。
 
+### 筛选与查看
+
+- **list / filter**：`btts voice filter` 是 `btts voice list` 的别名，两者共享
+  同一实现和选项。可选 `QUERY` 只匹配可寻址的目录名：`fuzzy`（默认）为不区分
+  大小写的连续子串，`prefix` 为前缀，`exact` 为完整名字；查询会去掉首尾空白
+  和一个前导 `@`。`--tag` 可重复且要求同时包含全部标签；`--tag`/`--kind`/
+  `--language` 与 `QUERY` 之间全部 AND。无匹配退出码 0。不可寻址的目录名不会
+  被 `QUERY` 命中；不带查询时表格/JSON 仍会列出它们并 warning。
+  `--names-only` 每行一个名字，便于管道到 `voice export`；无法安全寻址或 symlink
+  的音色会被跳过并在 stderr 警告。`--json` 输出单个文档（含 `query`、`match`、
+  `filters`、`count`、`voices`、`warnings`）；与 `--names-only` 互斥。
+- 筛选是只读操作，复用 `list` 的容错扫描：坏音色被跳过，tombstone 和目录名/
+  profile 名不一致会打印 warning，而不是失败。
+
 ### 重命名、标签与删除
 
 - **rename**：`btts voice rename OLD NEW` 把整个目录 `voices/OLD` 移到
@@ -135,7 +149,7 @@ runs/<run>/
 
 - `say` 的 clone/direction 路由会校验 `ref.wav` 和 `ref.txt` 的 SHA-256，
   不匹配退出码 5；`voice show` 做 schema、文件存在性和目录名/`profile.name`
-  一致性检查，但不比较哈希；`voice list` 会跳过无效 profile、`.deleting-*`
+  一致性检查，但不比较哈希；`voice list` / `voice filter` 会跳过无效 profile、`.deleting-*`
   tombstone、隐藏条目、不可读目录和无法解析的 clone 参考文件（含 symlink loop），
   单个坏目录不会让整个 list 失败。`voice show` 对损坏/integrity 问题报退出码 5，
   对不可读目录报退出码 2，均不打印 traceback。

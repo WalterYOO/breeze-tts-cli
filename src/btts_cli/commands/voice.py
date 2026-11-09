@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import shlex
 import sys
 import tempfile
 from pathlib import Path
 
 import click
+from rich.markup import escape
 from rich.panel import Panel
 from rich.table import Table
 
@@ -25,6 +27,12 @@ from btts_cli.domain.voice import (
     normalize_tags,
 )
 from btts_cli.domain.voice_export import export_voices
+from btts_cli.domain.voice_filter import (
+    MatchMode,
+    VoiceFilter,
+    is_addressable_name,
+    normalize_query,
+)
 from btts_cli.output.console import console, err_console, print_license_notice
 from btts_cli.output.errors import IntegrityError, UsageError
 from btts_cli.output.json import json_dumps
@@ -144,44 +152,269 @@ def voice_add(
     print_license_notice()
 
 
-@voice.command("list")
-@with_error_handling
-def voice_list() -> None:
-    """List local voice profiles."""
-    store = VoiceStore()
-    profiles, tombstones, mismatches = store.scan()
-    for tombstone in tombstones:
-        err_console.print(
-            f"[yellow]warning[/yellow] leftover delete tombstone: {tombstone}"
-        )
-    for directory_name, profile_name in mismatches:
-        err_console.print(
-            f"[yellow]warning[/yellow] voice directory {directory_name!r} contains "
-            f"profile name {profile_name!r}; re-run `btts voice rename "
-            f"{directory_name} {profile_name}` to repair"
-        )
-    if not profiles:
-        console.print("no voices yet.")
-        console.print(
-            "add one with: btts voice add NAME --ref REF.wav --text REF.txt "
-            "--confirm-transcript"
-        )
-        return
+def _voice_list_options(func):
+    """Shared options for ``voice list`` and its ``voice filter`` alias."""
+    func = click.argument("query", required=False)(func)
+    func = click.option(
+        "--match",
+        "match_mode",
+        type=click.Choice(["fuzzy", "prefix", "exact"]),
+        default="fuzzy",
+        show_default=True,
+        help=(
+            "Name match: fuzzy = case-insensitive substring; prefix = "
+            "case-insensitive startswith; exact = case-insensitive full name."
+        ),
+    )(func)
+    func = click.option(
+        "--tag",
+        "tags",
+        multiple=True,
+        metavar="TAG",
+        help="Require every given tag (repeatable, AND).",
+    )(func)
+    func = click.option(
+        "--kind",
+        type=click.Choice(["design", "clone"]),
+        default=None,
+        help="Only this profile kind.",
+    )(func)
+    func = click.option(
+        "--language",
+        type=click.Choice(["zh", "en"]),
+        default=None,
+        help="Only this language.",
+    )(func)
+    func = click.option(
+        "--names-only",
+        is_flag=True,
+        help="Print matching names one per line for scripting.",
+    )(func)
+    func = click.option(
+        "--json",
+        "as_json",
+        is_flag=True,
+        help="Print one JSON document on stdout (no table).",
+    )(func)
+    return func
+
+
+def _voice_cfg(profile: VoiceProfile) -> float:
+    return profile.design.cfg_scale if profile.design else profile.defaults.cfg_scale
+
+
+def _display_text(value: str) -> str:
+    """Make store-derived text safe for terminal/table output.
+
+    Tolerant scans accept hand-edited profiles, so metadata can contain lone
+    surrogates (undecodable filesystem bytes) or C0/C1 control characters.
+    Replace the former and show the latter as visible escapes so a corrupt
+    profile cannot inject ANSI sequences or break the terminal encoding.
+    Other format characters (for example the ZWJ in emoji) are preserved.
+    """
+    safe = value.encode("utf-8", "replace").decode("utf-8")
+    return "".join(
+        f"\\x{ord(ch):02x}"
+        if ord(ch) < 0x20 or 0x7F <= ord(ch) <= 0x9F
+        else ch
+        for ch in safe
+    )
+
+
+def _voice_summary(profile: VoiceProfile) -> dict[str, object]:
+    return {
+        "name": profile.name,
+        "kind": profile.kind,
+        "language": profile.language,
+        "voice_id": profile.voice_id,
+        "cfg_scale": _voice_cfg(profile),
+        "tags": list(profile.tags),
+    }
+
+
+def _print_voice_table(profiles: list[VoiceProfile]) -> None:
     table = Table(title="voices", show_header=True)
     for column in ("name", "kind", "language", "voice_id", "cfg", "tags"):
         table.add_column(column)
     for profile in profiles:
-        cfg = profile.design.cfg_scale if profile.design else profile.defaults.cfg_scale
         table.add_row(
-            profile.name,
-            profile.kind,
-            profile.language,
-            profile.voice_id,
-            f"{cfg:g}",
-            ", ".join(profile.tags),
+            escape(_display_text(profile.name)),
+            escape(_display_text(profile.kind)),
+            escape(_display_text(profile.language)),
+            escape(_display_text(profile.voice_id)),
+            f"{_voice_cfg(profile):g}",
+            escape(_display_text(", ".join(profile.tags))),
         )
     console.print(table)
-    console.print(f"[dim]store: {store.root}[/dim]")
+
+
+def _scan_warnings(
+    tombstones: list[Path], mismatches: list[tuple[str, str]]
+) -> list[str]:
+    warnings = [f"leftover delete tombstone: {tombstone}" for tombstone in tombstones]
+    for directory_name, profile_name in mismatches:
+        warnings.append(
+            f"voice directory {directory_name!r} contains profile name "
+            f"{profile_name!r}; re-run `btts voice rename "
+            f"{shlex.quote(directory_name)} {shlex.quote(profile_name)}` "
+            "to repair"
+        )
+    return warnings
+
+
+def _emit_warnings(warnings: list[str]) -> None:
+    for warning in warnings:
+        err_console.print(
+            f"[yellow]warning[/yellow] {escape(_display_text(warning))}"
+        )
+
+
+def _is_symlinked_voice(store: VoiceStore, name: str) -> bool:
+    directory = store.path_for(name)
+    return directory.is_symlink() or (directory / "profile.json").is_symlink()
+
+
+def _run_voice_list(
+    *,
+    query: str | None,
+    match_mode: MatchMode,
+    tags: tuple[str, ...],
+    kind: str | None,
+    language: str | None,
+    names_only: bool,
+    as_json: bool,
+) -> None:
+    if names_only and as_json:
+        raise UsageError("--names-only and --json are mutually exclusive")
+
+    filter_spec = VoiceFilter(
+        query=normalize_query(query),
+        match=match_mode,
+        tags=tuple(normalize_tags(tags)),
+        kind=kind,
+        language=language,
+    )
+    store = VoiceStore()
+    profiles, tombstones, mismatches = store.scan()
+    warnings = _scan_warnings(tombstones, mismatches)
+    matched = [profile for profile in profiles if filter_spec.matches(profile)]
+
+    if names_only:
+        for profile in matched:
+            if not is_addressable_name(profile.name):
+                warnings.append(
+                    f"skipped unaddressable voice directory name: {profile.name!r}"
+                )
+                continue
+            if _is_symlinked_voice(store, profile.name):
+                warnings.append(
+                    f"skipped symlinked voice (strict commands refuse it): "
+                    f"{profile.name!r}"
+                )
+                continue
+            click.echo(profile.name)
+        _emit_warnings(warnings)
+        return
+
+    for profile in matched:
+        if not is_addressable_name(profile.name):
+            warnings.append(
+                f"voice directory name is not addressable: {profile.name!r}"
+            )
+        elif _is_symlinked_voice(store, profile.name):
+            warnings.append(
+                f"voice directory is a symlink (strict commands refuse it): "
+                f"{profile.name!r}"
+            )
+
+    if as_json:
+        payload = {
+            "schema_version": 1,
+            "kind": "btts-voice-list",
+            "query": filter_spec.query,
+            "match": filter_spec.match,
+            "filters": {
+                "tags": list(filter_spec.tags),
+                "kind": filter_spec.kind,
+                "language": filter_spec.language,
+            },
+            "count": len(matched),
+            "voices": [_voice_summary(profile) for profile in matched],
+            "warnings": warnings,
+        }
+        _emit_warnings(warnings)
+        click.echo(json_dumps(payload), nl=False)
+        return
+
+    _emit_warnings(warnings)
+    if not matched:
+        if filter_spec.has_criteria:
+            console.print("no matching voices.")
+            console.print(
+                f"[dim]store: {escape(_display_text(str(store.root)))}[/dim]"
+            )
+        else:
+            console.print("no voices yet.")
+            console.print(
+                "add one with: btts voice add NAME --ref REF.wav --text REF.txt "
+                "--confirm-transcript"
+            )
+        return
+    _print_voice_table(matched)
+    console.print(f"[dim]store: {escape(_display_text(str(store.root)))}[/dim]")
+
+
+@voice.command("list")
+@_voice_list_options
+@with_error_handling
+def voice_list(
+    query: str | None,
+    match_mode: MatchMode,
+    tags: tuple[str, ...],
+    kind: str | None,
+    language: str | None,
+    names_only: bool,
+    as_json: bool,
+) -> None:
+    """List or filter local voice profiles.
+
+    An optional QUERY matches the voice name; --tag/--kind/--language filter
+    structured fields. All supplied criteria are AND-ed. No match is a
+    successful empty result (exit 0).
+    """
+    _run_voice_list(
+        query=query,
+        match_mode=match_mode,
+        tags=tags,
+        kind=kind,
+        language=language,
+        names_only=names_only,
+        as_json=as_json,
+    )
+
+
+@voice.command("filter")
+@_voice_list_options
+@with_error_handling
+def voice_filter(
+    query: str | None,
+    match_mode: MatchMode,
+    tags: tuple[str, ...],
+    kind: str | None,
+    language: str | None,
+    names_only: bool,
+    as_json: bool,
+) -> None:
+    """Filter local voice profiles (alias for ``voice list`` with filters)."""
+    _run_voice_list(
+        query=query,
+        match_mode=match_mode,
+        tags=tags,
+        kind=kind,
+        language=language,
+        names_only=names_only,
+        as_json=as_json,
+    )
 
 
 @voice.command("show")

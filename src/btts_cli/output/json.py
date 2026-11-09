@@ -10,16 +10,27 @@ from typing import Any
 
 
 def json_dumps(data: Any) -> str:
-    return (
-        json.dumps(
+    text = json.dumps(
+        data,
+        indent=2,
+        ensure_ascii=False,
+        sort_keys=True,
+        allow_nan=False,
+    )
+    try:
+        text.encode("utf-8")
+    except UnicodeEncodeError:
+        # Hand-edited stores can contain lone surrogates (for example from
+        # undecodable filesystem bytes). Keep the document writable instead of
+        # crashing the command; ASCII escaping still produces valid JSON.
+        text = json.dumps(
             data,
             indent=2,
-            ensure_ascii=False,
+            ensure_ascii=True,
             sort_keys=True,
             allow_nan=False,
         )
-        + "\n"
-    )
+    return text + "\n"
 
 
 def write_json_atomic(path: Path, data: Any) -> None:

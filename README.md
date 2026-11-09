@@ -108,7 +108,13 @@ btts design freeze runs/dusk-01 --take c001 --name dusk --as design
 # 或固化成 clone 参考（需要人工逐字确认转写文本）
 btts design freeze runs/dusk-01 --take c001 --name dusk --as clone --confirm-transcript
 
-btts voice list
+btts voice list                                  # 全部音色
+btts voice list girl                             # 模糊：名字包含 girl（不区分大小写）
+btts voice list --match prefix std-              # 前缀匹配
+btts voice list --match exact @dusk              # 精确匹配完整名字
+btts voice list --tag calm --tag night --kind clone --language zh
+btts voice filter girl --names-only              # 别名；每行一个名字，便于管道
+btts voice list --json                           # 单个 JSON 文档
 btts voice show dusk
 
 # say 的三条路由
@@ -144,7 +150,7 @@ btts voice export --all --zip -o btts-voices.zip --json
 | `design report RUN_DIR [--metrics basic\|full]` | 指标、CSV、Markdown、`all_candidates.wav`、离线 HTML |
 | `design freeze RUN_DIR --take ID --name NAME [--as design\|clone]` | 把某个候选固化成音色 profile |
 | `voice add NAME --ref WAV --text FILE --confirm-transcript` | 用已获授权的参考音频添加 clone profile |
-| `voice list` / `voice show NAME` | 查看本地音色库 |
+| `voice list [QUERY] [--match fuzzy\|prefix\|exact] [--tag TAG ...] [--kind design\|clone] [--language zh\|en] [--names-only] [--json]` | 查看并按名字/标签/类型/语言筛选本地音色库；`voice filter` 是同一命令的别名 |
 | `voice rename OLD NEW` | 同时改目录名和 profile 的 `name`；目标已存在时拒绝，绝不覆盖 |
 | `voice tag NAME [--add TAG ...] [--remove TAG ...] [--set TAG ...] [--clear]` | 无参数列出 tags；否则只修改 `tags`。`--set`/`--clear` 与相应操作互斥，每个 tag 需要自己的 flag |
 | `voice delete NAME [--yes]` | 删除单个音色目录；默认交互确认，非 TTY 环境必须显式 `--yes` |
@@ -152,6 +158,8 @@ btts voice export --all --zip -o btts-voices.zip --json
 | `say TEXT --design FILE` | `tts_instruction`，cfg 4.0 |
 | `say TEXT --voice @NAME` | `ref_clone_tata`（clone）或已保存的 design 配方；clone 使用 cfg 1.0 |
 | `say TEXT --voice @NAME --direction TEXT` | `ref_edit_tata`，cfg 4.0 |
+
+`voice list` 的筛选规则：`QUERY` 只匹配可寻址的音色名（目录名），`fuzzy` 为不区分大小写的连续子串，`prefix` 为不区分大小写的前缀，`exact` 为不区分大小写的完整名字；`QUERY` 前后的空白和一个前导 `@` 会被忽略。`--tag` 可重复，要求**同时包含**所有给定标签；`--kind`、`--language`、`--tag` 与 `QUERY` 之间全部是 AND。无匹配是成功空结果（退出码 0）。不可寻址的目录名不会被 `QUERY` 命中，但不带查询时表格/JSON 仍会列出并 warning，方便修复。`--names-only` 每行输出一个名字，跳过不可寻址或 symlink 音色并在 stderr 警告；`--json` 输出一个带 `query`/`match`/`filters`/`count`/`voices`/`warnings` 的 JSON 文档，两者互斥。筛选是只读操作，和 `voice list` 一样使用容错扫描：跳过坏音色，并对 tombstone、目录名/profile 名不一致、不可寻址或 symlink 条目打印 warning。
 
 explore 的默认矩阵：从 100 以内的 25 个质数里随机抽 2 个 seed × `cfg=2.5,4.0` = **4 个候选**。抽中的 seed 会写进 `run.json`，take 本身仍可复现；想要固定矩阵就用 `--seeds` 指定。`--wide` 会加入第二段 cover 台词 = **8 个候选**。超过 16 个候选的显式矩阵必须同时传 `--seeds`/`--cfgs` 和 `--yes`。
 

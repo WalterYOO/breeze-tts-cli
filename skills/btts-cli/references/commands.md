@@ -10,8 +10,8 @@
   默认优先 MPS。
 - 音色库目录：`$BTTS_DATA_DIR/voices`，否则平台用户数据目录
   （macOS: `~/Library/Application Support/btts_cli/voices`）。
-- `--json` 出现在 `doctor`、`model download`、`model verify`、`voice export`；
-  其余命令输出给人看。
+- `--json` 出现在 `doctor`、`model download`、`model verify`、`voice export`、
+  `voice list` / `voice filter`；其余命令输出给人看。
 - 退出码：1 通用 / lint blocked，2 用法，3 引擎，4 播放，5 完整性，130 中断。
 - 除 `model download` 外，任何命令都不会联网或自动更新模型。
 
@@ -334,14 +334,40 @@ btts voice export [NAME ...] [--all] [--mode full|wav] [-o/--out PATH]
 `files`、`bytes`、`manifest_sha256`、`warnings`），不打印 license panel。
 退出码：0 成功；2 用法/选择/目标路径问题；5 源音色完整性；130 中断。
 
-## btts voice list / btts voice show
+## btts voice list / btts voice filter / btts voice show
 
 ```bash
-btts voice list
+btts voice list [QUERY] [--match fuzzy|prefix|exact] [--tag TAG ...]
+                [--kind design|clone] [--language zh|en]
+                [--names-only | --json]
+btts voice filter ...        # 与 voice list 完全相同的别名
 btts voice show NAME
 ```
 
 `list` 显示 name、kind、language、voice_id、cfg、tags 和 store 路径。
+
+- 可选 `QUERY` 只匹配可寻址的音色名（目录名），不搜索 tags/voice_id 等字段。
+  不可寻址的目录名不会被 `QUERY` 命中；不带查询时表格/JSON 仍会列出它们并
+  打印 warning。匹配前去掉首尾空白和一个前导 `@`；空的有效查询是用法错误
+  （退出码 2）。
+- `--match fuzzy`（默认）为不区分大小写的连续子串：`girl` 匹配 `std-girl`，
+  但 `g-r-l` 不匹配。`prefix` 为不区分大小写的前缀。`exact` 为不区分大小写的
+  完整名字相等。
+- `--tag` 可重复，要求音色**同时包含**全部给定标签（AND）；标签先按
+  `voice tag` 的规则规范化再比较。`--kind`、`--language`、`--tag` 与 `QUERY`
+  之间也全部 AND。
+- 无匹配是成功空结果（退出码 0）：表格模式打印 `no matching voices.`，
+  `--names-only` 输出空，`--json` 的 `count` 为 0。
+- `--names-only` 每行输出一个名字（按 store 的排序），不打印表格和 store 路径；
+  无法安全寻址或 symlink 的音色目录会被跳过并在 stderr 警告（严格命令如
+  `voice export` 会拒绝 symlink，因此不会建议一个随后失败的管道）。适合
+  `btts voice export $(btts voice filter --tag calm --names-only)`。
+- `--json` 输出一个文档：`schema_version`、`kind: "btts-voice-list"`、`query`、
+  `match`、`filters`（`tags`/`kind`/`language`）、`count`、`voices`、`warnings`。
+  `--names-only` 与 `--json` 互斥（退出码 2）。
+- 筛选是只读操作，复用 `list` 的容错扫描：坏音色被跳过，tombstone 与目录名/
+  profile 名不一致在 stderr 打印 warning（`--json` 时也写入 `warnings`）。
+
 单个损坏/非法/不可读的音色目录、无法解析的 clone 参考文件（包括 symlink loop）
 都会被跳过，不会让整个 list 失败；`.deleting-*` tombstone 总是被跳过，并在
 stderr 打印带路径的 warning。如果目录名与 `profile.json` 的 `name` 不一致

@@ -3,10 +3,10 @@ name: btts-cli
 description: >-
   Operate the local `btts` CLI (breeze-tts-cli) for Breeze TTS 2 on Apple Silicon:
   doctor, model download/verify, design init/lint/explore/report/freeze,
-  voice add/list/show/rename/tag/delete/export, and say. Use when the user mentions
-  btts, breeze-tts, Breeze TTS, 音色设计, voice design, 克隆音色 / voice clone,
-  design explore, freeze a take, export voices, or wants local TTS with a designed
-  or cloned voice.
+  voice add/list/filter/show/rename/tag/delete/export, and say. Use when the user
+  mentions btts, breeze-tts, Breeze TTS, 音色设计, voice design, 克隆音色 / voice
+  clone, design explore, freeze a take, filter/list voices, export voices, or wants
+  local TTS with a designed or cloned voice.
 ---
 
 # btts-cli
@@ -103,6 +103,15 @@ btts voice add narrator --ref ref.wav --text ref.txt --confirm-transcript --lang
 ### 3. 管理已有音色
 
 ```bash
+# 筛选：QUERY 匹配名字，fuzzy=子串 / prefix=前缀 / exact=完整名字（都不区分大小写）
+btts voice list
+btts voice list girl
+btts voice list --match prefix std-
+btts voice list --match exact @dusk
+btts voice list --tag calm --tag night --kind clone --language zh
+btts voice filter girl --names-only              # 别名；每行一个名字，可直接管道
+btts voice list --json                           # 单个 JSON 文档
+
 # 改名：同时改目录名和 profile.json 的 name；目标已存在时拒绝，绝不覆盖
 btts voice rename OLD NEW
 
@@ -124,6 +133,16 @@ btts voice export @dusk narrator --mode wav -o ./samples
 btts voice export --all --zip -o btts-voices.zip --json
 ```
 
+- `list`/`filter` 是同一实现，`filter` 只是别名。`QUERY` 只匹配可寻址的目录名；
+  `fuzzy` 为不区分大小写的连续子串（不是 fzf 式子序列），`prefix` 为前缀，
+  `exact` 为完整名字。查询会去掉首尾空白和一个前导 `@`。`--tag` 可重复且要求
+  同时包含全部标签；`--tag`/`--kind`/`--language` 与 `QUERY` 之间全部 AND。
+  无匹配退出码 0。不可寻址的目录名不会被 `QUERY` 命中，但不带查询时表格/JSON
+  仍会列出并 warning。`--names-only` 和 `--json` 互斥；`--names-only` 每行一个
+  名字，跳过不可寻址或 symlink 音色，适合
+  `btts voice export $(btts voice filter ... --names-only)` 这类管道。
+  筛选只读，和 `voice list` 一样容错扫描：跳过坏音色，并对 tombstone、目录名与
+  profile 名不一致、不可寻址或 symlink 条目在 stderr 打印 warning。
 - `rename` 保留 `voice_id`、`tags`、`provenance`、`consent`、`license` 和
   `reference` 的相对文件名，只改 `name` 和目录名。旧名立即失效，
   `voice list` / `voice show` / `say --voice @NEW` 都使用新名。目标已存在时
