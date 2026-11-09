@@ -18,6 +18,7 @@ from btts_cli.commands._common import (
     generate_or_raise_engine_error,
     with_error_handling,
 )
+from btts_cli.commands._complete import complete_voice_reference
 from btts_cli.domain.design import (
     compile_design,
     has_inline_event,
@@ -47,6 +48,7 @@ RouteKind = Literal["design", "clone", "direction", "plain"]
     "--voice",
     "voice_ref",
     default=None,
+    shell_complete=complete_voice_reference,
     help="@NAME from the voice store → clone / design recipe.",
 )
 @click.option("--direction", default=None, help="One-off performance note (clone only).")

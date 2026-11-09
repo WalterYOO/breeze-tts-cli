@@ -15,6 +15,63 @@
 - 退出码：1 通用 / lint blocked，2 用法，3 引擎，4 播放，5 完整性，130 中断。
 - 除 `model download` 外，任何命令都不会联网或自动更新模型。
 
+## btts completion
+
+```bash
+btts completion [SHELL] [--install | --uninstall] [--dir DIR]
+```
+
+把对应 shell 的补全脚本写到 stdout（纯脚本文本，可直接重定向）。省略 `SHELL`
+时从 `$SHELL` 推断；无法识别时退出码 2，hint 会列出支持的 shell。
+
+```bash
+# bash（Click 模板需要 bash 4.4+；macOS 自带 3.2，通常改用 zsh）
+btts completion bash > ~/.btts-complete.bash
+echo 'source ~/.btts-complete.bash' >> ~/.bashrc
+
+# zsh（.zshrc 需先执行 compinit）
+btts completion zsh > ~/.btts-complete.zsh
+echo 'source ~/.btts-complete.zsh' >> ~/.zshrc
+
+# fish
+btts completion fish > ~/.config/fish/completions/btts.fish
+
+# PowerShell（Click 8.5+）
+btts completion powershell >> $PROFILE
+```
+
+也可以写入专用补全文件，`--install` 绝不修改 `.bashrc`/`.zshrc`/`config.fish`：
+
+```bash
+btts completion zsh --install      # ~/.zfunc/_btts；stderr 打印需要的 fpath 两行
+btts completion fish --install     # ~/.config/fish/completions/btts.fish（自动加载）
+btts completion bash --install     # ~/.local/share/bash-completion/completions/btts
+btts completion zsh --uninstall    # 只删带 btts 标记的文件；不存在时退出码 0
+btts completion zsh --install --dir DIR   # 自定义目录
+```
+
+- `--install` 幂等：内容相同打印 `up to date`，不同则原子替换。
+- 目标已存在但不是 `btts` 生成的、或目标是 symlink 时拒绝（退出码 2），没有
+  `--force`；`--uninstall` 同样拒绝删除用户手写文件。
+- `--dir` 必须与 `--install` 或 `--uninstall` 同用；二者互斥。
+- PowerShell 没有统一的自动加载目录，`--install` 会拒绝（退出码 2）；
+  请手工追加到 `$PROFILE`。
+
+脚本使用 Click 的惰性补全协议：TAB 时以 `_BTTS_COMPLETE=<shell>_complete` 回调
+`btts`，动态读取本地音色库。补全范围：
+
+- `voice show NAME`、`voice export NAME ...`、`voice list` / `voice filter` 的
+  `QUERY`：用户输入 `@` 时补 `@NAME`，否则补裸名。
+- `voice rename OLD`、`voice tag NAME`、`voice delete NAME`：只补裸名（这些命令
+  不接受 `@`；输入 `@` 时返回空候选）。
+- `say --voice`：固定补 `@NAME`。
+- 其他枚举型参数（`--match`、`--kind`、`--language`、`--mode`）由 Click 的
+  `Choice` 自动补全。
+
+补全只列可寻址、且目录与 `profile.json` 都不是 symlink 的音色；store 不存在、
+不可读、profile 损坏或扫描抛错时静默返回空候选，绝不向 stdout 打印
+warning/error。补全只做输入辅助，不改变任何命令的校验、确认流程或退出码。
+
 ## btts doctor
 
 ```bash

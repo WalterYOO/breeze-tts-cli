@@ -15,6 +15,10 @@ from rich.table import Table
 from btts_cli.audio.hash import prefixed, sha256_file, sha256_text
 from btts_cli.audio.io import read_wav
 from btts_cli.commands._common import with_error_handling
+from btts_cli.commands._complete import (
+    complete_bare_voice_name,
+    complete_voice_name,
+)
 from btts_cli.domain.design import has_inline_event
 from btts_cli.domain.voice import (
     DefaultsBlock,
@@ -154,7 +158,9 @@ def voice_add(
 
 def _voice_list_options(func):
     """Shared options for ``voice list`` and its ``voice filter`` alias."""
-    func = click.argument("query", required=False)(func)
+    func = click.argument(
+        "query", required=False, shell_complete=complete_voice_name
+    )(func)
     func = click.option(
         "--match",
         "match_mode",
@@ -418,7 +424,7 @@ def voice_filter(
 
 
 @voice.command("show")
-@click.argument("name")
+@click.argument("name", shell_complete=complete_voice_name)
 @with_error_handling
 def voice_show(name: str) -> None:
     """Show one voice profile and its files."""
@@ -457,7 +463,7 @@ def voice_show(name: str) -> None:
 
 
 @voice.command("export")
-@click.argument("names", nargs=-1)
+@click.argument("names", nargs=-1, shell_complete=complete_voice_name)
 @click.option(
     "--all",
     "export_all",
@@ -543,7 +549,7 @@ def voice_export(
 
 
 @voice.command("rename")
-@click.argument("old_name")
+@click.argument("old_name", shell_complete=complete_bare_voice_name)
 @click.argument("new_name")
 @with_error_handling
 def voice_rename(old_name: str, new_name: str) -> None:
@@ -558,7 +564,7 @@ def voice_rename(old_name: str, new_name: str) -> None:
 
 
 @voice.command("tag")
-@click.argument("name")
+@click.argument("name", shell_complete=complete_bare_voice_name)
 @click.option("--add", "add_tags", multiple=True, metavar="TAG", help="Add tags.")
 @click.option(
     "--remove",
@@ -609,7 +615,7 @@ def voice_tag(
 
 
 @voice.command("delete")
-@click.argument("name")
+@click.argument("name", shell_complete=complete_bare_voice_name)
 @click.option("--yes", is_flag=True, help="Skip the interactive confirmation.")
 @with_error_handling
 def voice_delete(name: str, yes: bool) -> None:

@@ -12,6 +12,7 @@ from tests.fake_engine import FakeEngine
 def test_help_works(run) -> None:
     result = run("--help")
     assert result.exit_code == 0
+    assert "completion" in result.output
     assert "design" in result.output
     assert "doctor" in result.output
     assert "model" in result.output

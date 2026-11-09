@@ -137,6 +137,47 @@ btts voice export @dusk @late-night --mode wav -o ./samples
 btts voice export --all --zip -o btts-voices.zip --json
 ```
 
+## Shell 补全
+
+`btts completion` 输出对应 shell 的补全脚本。脚本在按 TAB 时回调 `btts`，
+因此 `voice show`、`voice export`、`voice tag`、`voice delete`、`voice rename OLD`、
+`voice list`/`voice filter` 的 `QUERY`，以及 `say --voice` 都会动态补全本地音色名
+（`say --voice` 固定补 `@NAME`；其余命令跟随用户输入，输入 `@` 就补 `@NAME`）。
+省略 `SHELL` 时从 `$SHELL` 推断，支持 `bash`、`zsh`、`fish`、`powershell`。
+
+```bash
+# bash（Click 的补全脚本需要 bash 4.4+；macOS 自带 3.2，请用 zsh 或新版 bash）
+btts completion bash > ~/.btts-complete.bash
+echo 'source ~/.btts-complete.bash' >> ~/.bashrc
+
+# zsh（确保 .zshrc 已调用 compinit）
+btts completion zsh > ~/.btts-complete.zsh
+echo 'source ~/.btts-complete.zsh' >> ~/.zshrc
+
+# fish
+btts completion fish > ~/.config/fish/completions/btts.fish
+
+# PowerShell（Click 8.5+；追加到 $PROFILE，重开终端后生效）
+btts completion powershell >> $PROFILE
+```
+
+也可以让 `btts` 写入专用补全文件，**绝不修改 rc 文件**：
+
+```bash
+btts completion zsh --install     # 写入 ~/.zfunc/_btts，并打印 .zshrc 需要的 fpath 两行
+btts completion fish --install    # 写入 ~/.config/fish/completions/btts.fish，fish 自动加载
+btts completion bash --install    # 写入 ~/.local/share/bash-completion/completions/btts
+btts completion zsh --uninstall   # 只删除带 btts 标记的文件，可重复执行
+btts completion zsh --install --dir ~/my-completions   # 自定义目录
+```
+
+`--install` 是幂等的；目标文件若已存在但不是 `btts` 生成的、或目标是 symlink，
+会拒绝覆盖/写入（退出码 2）。`--dir` 必须与 `--install`/`--uninstall` 同用。
+PowerShell 没有统一的自动加载目录，所以不支持 `--install`，请手工追加到 `$PROFILE`。
+
+补全只列出可寻址、非 symlink 的音色；store 不存在、不可读或 profile 损坏时静默
+返回空候选，不会向 stdout 打印 warning/error，也不会改变任何命令的校验和退出码。
+
 ## 命令（P0）
 
 | 命令 | 用途 |
@@ -155,6 +196,7 @@ btts voice export --all --zip -o btts-voices.zip --json
 | `voice tag NAME [--add TAG ...] [--remove TAG ...] [--set TAG ...] [--clear]` | 无参数列出 tags；否则只修改 `tags`。`--set`/`--clear` 与相应操作互斥，每个 tag 需要自己的 flag |
 | `voice delete NAME [--yes]` | 删除单个音色目录；默认交互确认，非 TTY 环境必须显式 `--yes` |
 | `voice export [NAME ...] [--all] [--mode full\|wav] [-o PATH] [--zip] [--json]` | 导出全部/指定/多个音色；`full` 含 profile、参考文件与配方，`wav` 只含可试听样本；目录或 zip bundle 永不覆盖已有路径 |
+| `completion [SHELL] [--install\|--uninstall] [--dir DIR]` | 输出或安装 `bash`/`zsh`/`fish`/`powershell` 补全脚本；动态补全音色名，省略 SHELL 时从 `$SHELL` 推断 |
 | `say TEXT --design FILE` | `tts_instruction`，cfg 4.0 |
 | `say TEXT --voice @NAME` | `ref_clone_tata`（clone）或已保存的 design 配方；clone 使用 cfg 1.0 |
 | `say TEXT --voice @NAME --direction TEXT` | `ref_edit_tata`，cfg 4.0 |

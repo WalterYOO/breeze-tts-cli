@@ -3,10 +3,11 @@ name: btts-cli
 description: >-
   Operate the local `btts` CLI (breeze-tts-cli) for Breeze TTS 2 on Apple Silicon:
   doctor, model download/verify, design init/lint/explore/report/freeze,
-  voice add/list/filter/show/rename/tag/delete/export, and say. Use when the user
-  mentions btts, breeze-tts, Breeze TTS, 音色设计, voice design, 克隆音色 / voice
-  clone, design explore, freeze a take, filter/list voices, export voices, or wants
-  local TTS with a designed or cloned voice.
+  voice add/list/filter/show/rename/tag/delete/export, shell completion, and say.
+  Use when the user mentions btts, breeze-tts, Breeze TTS, 音色设计, voice design,
+  克隆音色 / voice clone, design explore, freeze a take, filter/list voices,
+  export voices, shell completion for btts, or wants local TTS with a designed or
+  cloned voice.
 ---
 
 # btts-cli
@@ -160,7 +161,21 @@ btts voice export --all --zip -o btts-voices.zip --json
   `--all` 遇到坏音色或无权限条目会整体失败（退出码 5），不会静默漏导。
   `full` 可能含参考音频、逐字转写和 consent 元数据，按个人数据处理。
 
-### 4. 直接合成
+### 4. Shell 补全（可选）
+
+```bash
+btts completion zsh                            # 输出脚本到 stdout；省略 SHELL 时读 $SHELL
+btts completion zsh > ~/.btts-complete.zsh     # 再由 .zshrc source
+btts completion fish > ~/.config/fish/completions/btts.fish
+btts completion zsh --install                  # 写 ~/.zfunc/_btts 并打印 fpath 行；不碰 rc
+btts completion zsh --uninstall                # 只删 btts 生成的文件
+```
+
+支持 `bash`/`zsh`/`fish`/`powershell`。补全是只读的：动态扫描本地音色库，
+只列可寻址、非 symlink 的音色；`say --voice` 补 `@NAME`。补全失败时静默返回空，
+不要把它当成命令本身失败，也不要在补全回调里加 warning。
+
+### 5. 直接合成
 
 ```bash
 btts say "晚上好。" --design dusk.yaml
