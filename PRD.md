@@ -16,7 +16,7 @@
 | P0 范围 | 设计工作台 + freeze + say 三路由 + 模型下载/校验 + 音色管理/导出 + Shell 补全 | 砍掉远程后端、批处理、项目锁、自动评分、后台任务系统 |
 | 模型获取 | `model download` 支持 Hugging Face 与 ModelScope；`model verify` 离线校验 | 不自动下载、不后台更新；必须显式确认并接受非商业许可 |
 | 音色管理 | `list/filter/rename/tag/delete/export` 归入 P0，全部走 store 锁与 no-follow 校验 | 删除必须 TTY 确认或显式 `--yes`；导出永不覆盖已有目标 |
-| Shell 补全 | `btts completion` 作为独立顶层命令，动态补全本地音色名 | 只写专用补全文件，绝不修改用户 rc；只删除自己生成的文件 |
+| Shell 补全 | `btts completion` 作为独立顶层命令，动态补全本地音色名 | 自动复用已在 `$fpath`/bash-completion 的目录；必要时维护带标记的 rc 块（幂等、可卸载）；只删除自己生成的文件和块 |
 
 **实测依据**
 
@@ -475,16 +475,20 @@ btts completion [SHELL] [--install|--uninstall] [--dir DIR]
 ```
 
 - 支持 `bash`、`zsh`、`fish`、`powershell`（PowerShell 与实际 Click 版本相关，未实现时不列出）；省略 `SHELL` 时从 `$SHELL` 推断，无法推断则 exit 2 并列出所有支持项。
-- 默认把补全脚本写到 stdout；`--install` 写入各 shell 的专用补全文件；`--uninstall` 只删除带 btts 标记的文件。命令永远不会修改 `.bashrc`、`.zshrc` 或 `config.fish`。
-- 默认安装路径：
-  - bash：`$XDG_DATA_HOME/bash-completion/completions/btts`（默认 `~/.local/share`）
-  - zsh：存在 Oh My Zsh 时写到 `$ZSH_CUSTOM/completions/_btts`（默认 `~/.oh-my-zsh/custom/completions/_btts`，该目录通常已在 `$fpath`）；否则 `~/.zfunc/_btts`
-  - fish：`$XDG_CONFIG_HOME/fish/completions/btts.fish`（默认 `~/.config`）
-  - `--dir` 覆盖安装目录，且只能与 `--install`/`--uninstall` 同用。
+- 默认把补全脚本写到 stdout；`--install` 写入各 shell 的专用补全文件，并在需要时自动维护带 `# >>> btts completion >>>` / `# <<< btts completion <<<` 标记的 rc 块；`--uninstall` 只删除带 btts 标记的文件和标记块。
+- 默认安装路径按环境自适应：
+  - zsh + Oh My Zsh：`$ZSH_CUSTOM/completions/_btts`（默认 `~/.oh-my-zsh/custom/completions/_btts`，已在 `$fpath`，无需改 rc）。
+  - zsh + 已有 fpath：复用 `.zshrc`/`.zshenv`/`.zprofile`/`.zlogin` 中 `fpath=(...)` 已包含且可写的目录，无需改 rc。
+  - zsh 其他情况：写 `~/.zfunc/_btts`，并在 `$ZDOTDIR/.zshrc`（默认 `~/.zshrc`）维护包含 `fpath` 与 `compinit` 的标记块。
+  - bash + `$BASH_COMPLETION_USER_DIR`：写 `$BASH_COMPLETION_USER_DIR/completions/btts`，无需改 rc。
+  - bash + bash-completion：写 `$XDG_DATA_HOME/bash-completion/completions/btts`（默认 `~/.local/share`），无需改 rc。
+  - bash 其他情况：写 `$XDG_DATA_HOME/btts/completion.bash`，并在 `.bashrc`（或已有的 `.bash_profile`）维护 source 标记块；检测到 bash < 4.4 时只写文件并警告，不改 rc（Click 的补全脚本需要 bash 4.4+）。
+  - fish：`$XDG_CONFIG_HOME/fish/completions/btts.fish`（默认 `~/.config`），fish 自动加载，无需改 rc。
+  - `--dir` 覆盖安装目录，且只能与 `--install`/`--uninstall` 同用；此时只写文件，不改 rc。
 - 动态补全：TAB 时回调 `btts`，从本地 store 补全音色名，覆盖 `voice show/export/tag/delete`、`voice rename OLD`、`voice list|filter` 的 `QUERY` 和 `say --voice`。`say --voice` 固定补 `@NAME`；其余命令跟随用户输入（输入 `@` 才补 `@NAME`）。
 - 只补全可寻址、非 symlink 的音色；store 损坏或读取失败时静默返回空候选，不向 shell 的 stdout 写错误信息。
-- `--install` 幂等：内容相同打印 `up to date`；目标已存在但不是 btts 生成的文件、或目标本身是 symlink 时拒绝（exit 2）；写入使用临时文件 + 原子 rename。zsh 在 Oh My Zsh 环境下提示目录已在 `$fpath`，无需修改 rc。
-- `--uninstall` 对未安装的目标打印 `not installed`；拒绝删除不是 btts 生成的文件或 symlink。
+- `--install` 幂等：内容相同打印 `up to date`；rc 块已存在时原地替换而不是追加；目标已存在但不是 btts 生成的文件、或目标本身是 symlink 时拒绝（exit 2）；写入使用临时文件 + 原子 rename。切换到更优路径时会清理旧位置带标记的文件和 rc 块。
+- `--uninstall` 幂等：删除所有已知位置带标记的补全文件和 rc 标记块，未安装时打印 `nothing to remove.`；拒绝删除不是 btts 生成的文件或 symlink。
 - PowerShell 不支持 `--install`/`--uninstall`，明确报错并提示手动追加到 `$PROFILE`。
 
 ---
@@ -974,7 +978,7 @@ packages = ["src/btts_cli"]
 22. `voice rename` 永不覆盖；目标与源仅大小写不同时给出中间名提示；模拟“profile 已改、目录未改”的中断后重跑同一命令可修复。`voice tag` 的 `--set`/`--clear` 互斥规则正确，且只改写 tags。`voice delete` 在非交互会话缺少 `--yes` 时 exit 2 且不删除；残留 tombstone 会被 `voice list` 警告。
 23. `voice export` 的 full/wav 布局与 `manifest.json` 哈希正确；目标已存在、目标位于 store 内、缺文件、哈希不符、symlink、大小写冲突都在写盘前失败且不留半成品；`--zip` 归档只有一个顶层目录；`--json` stdout 可严格解析。
 24. `btts completion` 对 bash/zsh/fish（以及当前 Click 支持的 powershell）输出脚本；省略 `SHELL` 时按 `$SHELL` 推断；动态补全覆盖 `voice show/export/tag/delete`、`voice rename OLD`、`voice list|filter QUERY` 和 `say --voice`，并正确镜像 `@` 前缀。
-25. `completion --install` 幂等；拒绝覆盖非 btts 生成的文件与 symlink；`--uninstall` 只删除带标记的文件；任何路径都不修改 rc；`--dir` 只能与 `--install`/`--uninstall` 同用；zsh 在 Oh My Zsh 环境下安装到 `$ZSH_CUSTOM/completions` 并提示无需改 rc。
+25. `completion --install` 幂等；拒绝覆盖非 btts 生成的文件与 symlink；`--uninstall` 只删除带标记的文件和 rc 块；仅在复用 Oh My Zsh/fpath/bash-completion 时不动 rc，否则维护单一标记块且重复安装不重复追加；`--dir` 只能与 `--install`/`--uninstall` 同用且不改 rc；bash < 4.4 时写文件但不改 rc 并警告。
 26. `doctor` 在 `basic`/`partial`/`full` 三种指标后端状态下给出正确等级与缺失提示；`design explore` 未给 `--seeds` 时抽取 2 个 100 以内质数并写入 `run.json`，`--resume` 复用；`design report` 的推荐排序确定、默认选中但不自动 freeze，盲听模式不暴露推荐。
 
 ---
@@ -1023,7 +1027,7 @@ packages = ["src/btts_cli"]
 | 下载内容与许可被误解 | 用户误以为可商用 | 下载前打印来源、大小与非商业许可；确认后才联网 |
 | 镜像文件被替换/损坏 | 加载失败或行为异常 | ModelScope 逐文件 `Sha256`、HF `huggingface-hub` 校验；`model verify --deep` 可重算 |
 | full 导出包含参考音频/逐字转写 | 隐私或授权泄露 | `full` 模式显式打印警告；`wav` 模式不含 profile；导出前严格校验来源一致性 |
-| 补全脚本写入用户目录 | 覆盖用户已有文件 | 只覆盖带 btts 标记的文件；拒绝 symlink；不修改 rc；安装幂等 |
+| 补全脚本写入用户目录 | 覆盖用户已有文件 | 只覆盖带 btts 标记的文件；拒绝 symlink；rc 只维护带标记的块且可卸载；安装幂等 |
 | rename/delete 中断 | 目录名与 profile 名不一致或残留 tombstone | 重跑同一命令可修复；`voice list` / `show` / `export` 给出修复提示或 tombstone 警告 |
 
 ---

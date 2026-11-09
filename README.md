@@ -161,22 +161,34 @@ btts completion fish > ~/.config/fish/completions/btts.fish
 btts completion powershell >> $PROFILE
 ```
 
-也可以让 `btts` 写入专用补全文件，**绝不修改 rc 文件**：
+推荐一条命令全自动安装（幂等，可重复执行）：
 
 ```bash
-btts completion zsh --install     # 写入 ~/.zfunc/_btts；Oh My Zsh 用户自动写入 $ZSH_CUSTOM/completions
-btts completion fish --install    # 写入 ~/.config/fish/completions/btts.fish，fish 自动加载
-btts completion bash --install    # 写入 ~/.local/share/bash-completion/completions/btts
-btts completion zsh --uninstall   # 只删除带 btts 标记的文件，可重复执行
-btts completion zsh --install --dir ~/my-completions   # 自定义目录
+btts completion --install      # 按 $SHELL 自动识别
+btts completion zsh --install
+btts completion bash --install
+btts completion fish --install
+btts completion zsh --uninstall
+
+btts completion zsh --install --dir ~/my-completions   # 只写文件，不改 rc
 ```
 
-`--install` 是幂等的；目标文件若已存在但不是 `btts` 生成的、或目标是 symlink，
-会拒绝覆盖/写入（退出码 2）。`--dir` 必须与 `--install`/`--uninstall` 同用。
-检测到 Oh My Zsh（或设置了 `ZSH_CUSTOM`）时，zsh 会装到
-`$ZSH_CUSTOM/completions/_btts`（默认 `~/.oh-my-zsh/custom/completions/_btts`）；
-该目录已在 `$fpath` 中，开个新 shell 即可，**不需要改 `.zshrc`**。
-PowerShell 没有统一的自动加载目录，所以不支持 `--install`，请手工追加到 `$PROFILE`。
+`--install` 会按环境自动选择位置：
+
+| shell | 自动选择 |
+|---|---|
+| zsh + Oh My Zsh | `$ZSH_CUSTOM/completions/_btts`（默认 `~/.oh-my-zsh/custom/completions`），已在 `$fpath` 中，开新 shell 即生效 |
+| zsh + 自定义 fpath | 复用 `.zshrc` / `.zshenv` / `.zprofile` 里 `fpath=(...)` 已配置且可写的目录 |
+| zsh 其他情况 | 写入 `~/.zfunc/_btts`，并在 `.zshrc` 维护一个 `# >>> btts completion >>>` 标记块（包含 `fpath` 和 `compinit`） |
+| bash + bash-completion | `$BASH_COMPLETION_USER_DIR/completions/btts` 或 `~/.local/share/bash-completion/completions/btts` |
+| bash 其他情况 | 写入 `~/.local/share/btts/completion.bash`，并在 `.bashrc`（或已有的 `.bash_profile`）维护标记块 |
+| fish | `~/.config/fish/completions/btts.fish`，fish 自动加载 |
+
+重复 `--install` 只会替换标记块，不会重复追加；`--uninstall` 删除补全文件和标记块，
+可重复执行。目标文件已存在但不是 btts 生成的、或目标是 symlink 时会拒绝
+（退出码 2）。Click 的 bash 脚本需要 bash 4.4+：检测到更老的 bash 时仍会写入文件，
+但不会改 rc（避免每次启动报错），并提示换用新版 bash 或 zsh。
+PowerShell 没有统一的自动加载目录，请手工追加到 `$PROFILE`。
 
 补全只列出可寻址、非 symlink 的音色；store 不存在、不可读或 profile 损坏时静默
 返回空候选，不会向 stdout 打印 warning/error，也不会改变任何命令的校验和退出码。

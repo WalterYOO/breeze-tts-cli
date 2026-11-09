@@ -239,33 +239,187 @@ def test_completion_install_then_uninstall(
     assert "not installed" in missing.output
 
 
-def test_completion_install_uses_oh_my_zsh_completions(
-    run, tmp_path: Path, monkeypatch
-) -> None:
+@pytest.fixture
+def fake_home(tmp_path: Path, monkeypatch) -> Path:
+    """Isolate HOME and every shell-location variable from the developer."""
     home = tmp_path / "home"
-    (home / ".oh-my-zsh" / "custom").mkdir(parents=True)
+    home.mkdir()
     monkeypatch.setenv("HOME", str(home))
-    monkeypatch.delenv("ZSH_CUSTOM", raising=False)
+    for name in (
+        "ZSH_CUSTOM",
+        "ZDOTDIR",
+        "BASH_COMPLETION_USER_DIR",
+        "XDG_DATA_HOME",
+        "XDG_CONFIG_HOME",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    return home
+
+
+def test_default_zsh_install_uses_oh_my_zsh(run, fake_home: Path) -> None:
+    (fake_home / ".oh-my-zsh" / "custom").mkdir(parents=True)
     result = run("completion", "zsh", "--install")
     assert result.exit_code == 0, result.output
-    target = home / ".oh-my-zsh" / "custom" / "completions" / "_btts"
+    target = fake_home / ".oh-my-zsh" / "custom" / "completions" / "_btts"
     assert target.is_file()
-    assert "already in $fpath" in result.output
+    # Oh My Zsh already loads this directory; no rc edit is needed.
+    assert not (fake_home / ".zshrc").exists()
+
+    again = run("completion", "zsh", "--install")
+    assert again.exit_code == 0, again.output
+    assert "up to date" in again.output
 
     removed = run("completion", "zsh", "--uninstall")
     assert removed.exit_code == 0, removed.output
     assert not target.exists()
 
 
-def test_completion_install_respects_zsh_custom(
-    run, tmp_path: Path, monkeypatch
+def test_default_zsh_install_reuses_an_existing_fpath_dir(
+    run, fake_home: Path
 ) -> None:
-    custom = tmp_path / "custom-zsh"
+    rc = fake_home / ".zshrc"
+    original = "fpath=(~/.my-completions $fpath)\nautoload -Uz compinit && compinit\n"
+    rc.write_text(original, encoding="utf-8")
+    (fake_home / ".my-completions").mkdir()
+
+    result = run("completion", "zsh", "--install")
+    assert result.exit_code == 0, result.output
+    target = fake_home / ".my-completions" / "_btts"
+    assert target.is_file()
+    assert rc.read_text(encoding="utf-8") == original
+
+
+def test_default_zsh_install_edits_zshrc_when_needed(
+    run, fake_home: Path
+) -> None:
+    result = run("completion", "zsh", "--install")
+    assert result.exit_code == 0, result.output
+    target = fake_home / ".zfunc" / "_btts"
+    assert target.is_file()
+    rc = fake_home / ".zshrc"
+    text = rc.read_text(encoding="utf-8")
+    assert text.count("# >>> btts completion >>>") == 1
+    assert "fpath=(" in text
+
+    again = run("completion", "zsh", "--install")
+    assert again.exit_code == 0, again.output
+    assert rc.read_text(encoding="utf-8").count("# >>> btts completion >>>") == 1
+
+    removed = run("completion", "zsh", "--uninstall")
+    assert removed.exit_code == 0, removed.output
+    assert not target.exists()
+    assert "# >>> btts completion >>>" not in rc.read_text(encoding="utf-8")
+
+
+def test_completion_install_respects_zsh_custom(
+    run, fake_home: Path, monkeypatch
+) -> None:
+    custom = fake_home / "custom-zsh"
     custom.mkdir()
     monkeypatch.setenv("ZSH_CUSTOM", str(custom))
     result = run("completion", "zsh", "--install")
     assert result.exit_code == 0, result.output
     assert (custom / "completions" / "_btts").is_file()
+    assert not (fake_home / ".zshrc").exists()
+
+
+def test_default_bash_install_edits_rc(
+    run, fake_home: Path, monkeypatch
+) -> None:
+    monkeypatch.setattr(
+        "btts_cli.commands.completion._bash_completion_installed", lambda: False
+    )
+    monkeypatch.setattr(
+        "btts_cli.commands.completion._bash_version", lambda: (5, 2)
+    )
+    result = run("completion", "bash", "--install")
+    assert result.exit_code == 0, result.output
+    target = fake_home / ".local" / "share" / "btts" / "completion.bash"
+    assert target.is_file()
+    rc = fake_home / ".bashrc"
+    assert "# >>> btts completion >>>" in rc.read_text(encoding="utf-8")
+
+    again = run("completion", "bash", "--install")
+    assert again.exit_code == 0, again.output
+    assert rc.read_text(encoding="utf-8").count("# >>> btts completion >>>") == 1
+
+    removed = run("completion", "bash", "--uninstall")
+    assert removed.exit_code == 0, removed.output
+    assert not target.exists()
+    assert "# >>> btts completion >>>" not in rc.read_text(encoding="utf-8")
+
+
+def test_default_bash_install_reuses_bash_completion_dir(
+    run, fake_home: Path, monkeypatch
+) -> None:
+    monkeypatch.setattr(
+        "btts_cli.commands.completion._bash_completion_installed", lambda: True
+    )
+    monkeypatch.setattr(
+        "btts_cli.commands.completion._bash_version", lambda: (5, 2)
+    )
+    result = run("completion", "bash", "--install")
+    assert result.exit_code == 0, result.output
+    target = (
+        fake_home
+        / ".local"
+        / "share"
+        / "bash-completion"
+        / "completions"
+        / "btts"
+    )
+    assert target.is_file()
+    assert not (fake_home / ".bashrc").exists()
+
+
+def test_default_bash_on_old_bash_does_not_edit_rc(
+    run, fake_home: Path, monkeypatch
+) -> None:
+    monkeypatch.setattr(
+        "btts_cli.commands.completion._bash_completion_installed", lambda: False
+    )
+    monkeypatch.setattr(
+        "btts_cli.commands.completion._bash_version", lambda: (3, 2)
+    )
+    result = run("completion", "bash", "--install")
+    assert result.exit_code == 0, result.output
+    assert "needs bash 4.4+" in result.output
+    assert (fake_home / ".local" / "share" / "btts" / "completion.bash").is_file()
+    assert not (fake_home / ".bashrc").exists()
+
+
+def test_default_fish_install(run, fake_home: Path) -> None:
+    result = run("completion", "fish", "--install")
+    assert result.exit_code == 0, result.output
+    target = fake_home / ".config" / "fish" / "completions" / "btts.fish"
+    assert target.is_file()
+    # fish auto-loads its completions directory; no rc edit is needed.
+    assert not (fake_home / ".zshrc").exists()
+
+    removed = run("completion", "fish", "--uninstall")
+    assert removed.exit_code == 0, removed.output
+    assert not target.exists()
+
+
+def test_uninstall_removes_legacy_file_and_rc_block(
+    run, fake_home: Path
+) -> None:
+    legacy = fake_home / ".zfunc" / "_btts"
+    legacy.parent.mkdir()
+    legacy.write_text("# btts-generated completion file\n", encoding="utf-8")
+    rc = fake_home / ".zshrc"
+    rc.write_text(
+        "before\n# >>> btts completion >>>\n"
+        "fpath=(~/.zfunc $fpath)\n"
+        "# <<< btts completion <<<\nafter\n",
+        encoding="utf-8",
+    )
+    result = run("completion", "zsh", "--uninstall")
+    assert result.exit_code == 0, result.output
+    assert not legacy.exists()
+    text = rc.read_text(encoding="utf-8")
+    assert "# >>> btts completion >>>" not in text
+    assert "before" in text and "after" in text
 
 
 def test_completion_install_refuses_a_foreign_file(run, tmp_path: Path) -> None:

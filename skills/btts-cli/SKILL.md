@@ -165,15 +165,18 @@ btts voice export --all --zip -o btts-voices.zip --json
 
 ```bash
 btts completion zsh                            # 输出脚本到 stdout；省略 SHELL 时读 $SHELL
-btts completion zsh > ~/.btts-complete.zsh     # 再由 .zshrc source
-btts completion fish > ~/.config/fish/completions/btts.fish
-btts completion zsh --install                  # 写 ~/.zfunc/_btts 并打印 fpath 行；不碰 rc
-btts completion zsh --uninstall                # 只删 btts 生成的文件
+btts completion --install                      # 全自动：Oh My Zsh/fpath/bash-completion 自适应
+btts completion zsh --uninstall                # 删除文件和 rc 标记块，幂等
+btts completion zsh --install --dir DIR        # 只写文件，不改 rc
 ```
 
-支持 `bash`/`zsh`/`fish`/`powershell`。补全是只读的：动态扫描本地音色库，
-只列可寻址、非 symlink 的音色；`say --voice` 补 `@NAME`。补全失败时静默返回空，
-不要把它当成命令本身失败，也不要在补全回调里加 warning。
+支持 `bash`/`zsh`/`fish`/`powershell`。`--install` 默认全自动且幂等：优先复用
+已在 `$fpath` 的目录（Oh My Zsh 的 `custom/completions`、`.zshrc` 里的 fpath 项），
+否则写入 `~/.zfunc/_btts`（bash 为 `~/.local/share/btts/completion.bash`）并在
+`.zshrc`/`.bashrc` 维护 `# >>> btts completion >>>` 标记块；重复执行只替换块。
+补全本身是只读的：动态扫描本地音色库，只列可寻址、非 symlink 的音色；
+`say --voice` 补 `@NAME`。补全失败时静默返回空，不要把它当成命令本身失败，
+也不要在补全回调里加 warning。
 
 ### 5. 直接合成
 

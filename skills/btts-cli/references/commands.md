@@ -40,23 +40,39 @@ btts completion fish > ~/.config/fish/completions/btts.fish
 btts completion powershell >> $PROFILE
 ```
 
-也可以写入专用补全文件，`--install` 绝不修改 `.bashrc`/`.zshrc`/`config.fish`：
+推荐 `--install` 全自动安装，按环境和 shell 自适应：
 
 ```bash
-btts completion zsh --install      # ~/.zfunc/_btts；Oh My Zsh 下自动用 $ZSH_CUSTOM/completions
-btts completion fish --install     # ~/.config/fish/completions/btts.fish（自动加载）
-btts completion bash --install     # ~/.local/share/bash-completion/completions/btts
-btts completion zsh --uninstall    # 只删带 btts 标记的文件；不存在时退出码 0
-btts completion zsh --install --dir DIR   # 自定义目录
+btts completion --install          # 从 $SHELL 推断
+btts completion zsh --install
+btts completion bash --install
+btts completion fish --install
+btts completion zsh --uninstall    # 删除文件 + rc 标记块；不存在时退出码 0
+btts completion zsh --install --dir DIR   # 只写文件，不改 rc
 ```
 
-- `--install` 幂等：内容相同打印 `up to date`，不同则原子替换。
-- 目标已存在但不是 `btts` 生成的、或目标是 symlink 时拒绝（退出码 2），没有
-  `--force`；`--uninstall` 同样拒绝删除用户手写文件。
-- `--dir` 必须与 `--install` 或 `--uninstall` 同用；二者互斥。
-- 检测到 Oh My Zsh（或设置了 `ZSH_CUSTOM`）时，zsh 默认装到
-  `$ZSH_CUSTOM/completions/_btts`（通常是 `~/.oh-my-zsh/custom/completions/_btts`）。
-  这个目录已在 `$fpath` 中，开新 shell 即生效，不需要改 `.zshrc`。
+自适应规则：
+
+| shell | 默认位置与 rc 行为 |
+|---|---|
+| zsh + Oh My Zsh | `$ZSH_CUSTOM/completions/_btts`；目录已在 `$fpath`，不改 rc |
+| zsh + 已有 fpath | 复用 `.zshrc`/`.zshenv`/`.zprofile` 里 `fpath=(...)` 中可写的目录，不改 rc |
+| zsh 其他 | `~/.zfunc/_btts` + 在 `.zshrc` 维护 `# >>> btts completion >>>` 块（含 `fpath` 与 `compinit`） |
+| bash + bash-completion | `$BASH_COMPLETION_USER_DIR/completions/btts` 或 `~/.local/share/bash-completion/completions/btts`，不改 rc |
+| bash 其他 | `~/.local/share/btts/completion.bash` + 在 `.bashrc` 或已有的 `.bash_profile` 维护标记块 |
+| fish | `~/.config/fish/completions/btts.fish`，fish 自动加载，不改 rc |
+
+- `--install` 幂等：文件内容相同打印 `up to date`；rc 块存在时原地替换，
+  不会重复追加。重复执行是安全的。
+- `--uninstall` 幂等：删除带 btts 标记的补全文件，并移除 zsh/bash rc 里的标记块；
+  也会清理旧版本留在 `~/.zfunc`、`~/.oh-my-zsh/completions` 等位置的标记文件。
+  没有可删内容时打印 `nothing to remove.`，退出码 0。
+- 目标文件已存在但不是 `btts` 生成的、或目标是 symlink 时拒绝（退出码 2），
+  没有 `--force`。rc 文件按原路径读写，支持 dotfiles 的 symlink。
+- `--dir` 必须与 `--install` 或 `--uninstall` 同用；二者互斥。`--dir` 只写/删
+  指定目录里的文件，不修改 rc，并在 stderr 打印需要手工添加的行。
+- Click 的 bash 模板需要 bash 4.4+。检测到更老的 bash 时仍写入文件，但不改 rc，
+  并在 stderr 警告；macOS 自带 bash 3.2，通常改用 zsh。
 - PowerShell 没有统一的自动加载目录，`--install` 会拒绝（退出码 2）；
   请手工追加到 `$PROFILE`。
 
