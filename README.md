@@ -1,6 +1,6 @@
 # breeze-tts-cli (`btts`)
 
-面向 Apple Silicon（MPS）的本地音色设计工作台，也是 **Breeze TTS 2** 的可复现请求运行器。它把“写 instruction → 生成 seed/cfg 网格 → 比较 → 固化音色”这套手工循环，收敛成一条可脚本化的命令链。
+面向 Apple Silicon（MPS）与 NVIDIA GPU（CUDA）的本地音色设计工作台，也是 **Breeze TTS 2** 的可复现请求运行器。它把“写 instruction → 生成 seed/cfg 网格 → 比较 → 固化音色”这套手工循环，收敛成一条可脚本化的命令链。
 
 ```
 design init → design lint → design explore → design report
@@ -22,11 +22,22 @@ design init → design lint → design explore → design report
 pip install -e ".[dev]"
 
 # 本地推理扩展（torch 2.9.1 / transformers 4.57.3 / qwen-tts 0.1.1）
+# macOS 上装的是 MPS 版 torch，Linux 上从 PyPI 装的是 CUDA 版
 pip install -e ".[mps]"
 
 # 可选的客观指标（F0 / HNR / 频谱质心）
 pip install -e ".[metrics]"
 ```
+
+用 `uv` 装成独立 CLI（推荐在 GPU 服务器上这样装）：
+
+```bash
+uv tool install ".[mps,metrics]"      # 或在克隆目录里 uv tool install --python 3.10 ".[mps,metrics]"
+```
+
+设备选择：默认 `auto`，依次尝试 `mps` → `cuda:$LOCAL_RANK` → 报错（不会静默退回 CPU）。
+需要指定时用 `--device mps|cuda[:N]|cpu`，`cpu` 只用于调试。`doctor` 会报告 MPS /
+CUDA 可用性和最终选中的设备。
 
 模型目录**不随包分发**，也绝不会被复制进包内。请把 CLI 指向本地的 Breeze-TTS-2 checkpoint：
 

@@ -1,8 +1,8 @@
 """Engine loading. Importing this module never imports ``torch``.
 
-The MPS implementation is imported lazily inside :func:`load_engine`, so
-``btts --help``, ``design lint`` and every unit test using a fake engine
-work in a base install without the ``[mps]`` extras.
+The local (MPS / CUDA) implementation is imported lazily inside
+:func:`load_engine`, so ``btts --help``, ``design lint`` and every unit test
+using a fake engine work in a base install without the ``[mps]`` extras.
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ if TYPE_CHECKING:  # pragma: no cover
 
 
 def load_engine(*, model_dir: Path | None = None, device: str | None = None) -> Engine:
-    """Load the local MPS engine (never falls back to CPU silently)."""
+    """Load the local engine (MPS or CUDA; never falls back to CPU silently)."""
     from btts_cli.engine.base import resolve_model_dir
 
     resolved = resolve_model_dir(model_dir)

@@ -1,8 +1,10 @@
-"""Local Apple-Silicon engine built on the vendored Breeze inference code.
+"""Local inference engine built on the vendored Breeze inference code.
 
-This is the only module allowed to import ``torch``. The environment variable
-``PYTORCH_ENABLE_MPS_FALLBACK`` is set before that import so unimplemented MPS
-operators fall back to CPU instead of failing mid-generation.
+Runs on Apple Silicon (MPS) or on NVIDIA GPUs (CUDA); ``--device cpu`` exists
+for debugging only. This is the only module allowed to import ``torch``. The
+environment variable ``PYTORCH_ENABLE_MPS_FALLBACK`` is set before that import
+so unimplemented MPS operators fall back to CPU instead of failing
+mid-generation.
 """
 
 from __future__ import annotations
@@ -35,22 +37,65 @@ def mps_available() -> bool:
     return bool(torch.backends.mps.is_built() and torch.backends.mps.is_available())
 
 
-def resolve_device(explicit: str | None) -> str:
-    if explicit:
-        normalized = explicit.strip().lower()
-        if normalized not in {"mps", "cpu"}:
-            raise EngineError(
-                f"unsupported device: {explicit}",
-                hint="P0 supports --device mps (default) or --device cpu (debug only)",
-            )
-        if normalized == "mps" and not mps_available():
-            raise EngineError("MPS is not available on this machine")
-        return normalized
+def cuda_available() -> bool:
+    return bool(torch.cuda.is_available())
+
+
+def _local_rank() -> int:
+    raw = os.environ.get("LOCAL_RANK", "")
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        return 0
+
+
+def _auto_device() -> str:
     if mps_available():
         return "mps"
+    if cuda_available():
+        rank = _local_rank()
+        if rank < torch.cuda.device_count():
+            return f"cuda:{rank}"
+        return "cuda:0"
     raise EngineError(
-        "MPS is not available; refusing to fall back to CPU silently",
+        "no GPU backend is available; refusing to fall back to CPU silently",
         hint="run `btts doctor` for details, or pass --device cpu only for debugging",
+    )
+
+
+def _validate_cuda(explicit: str) -> str:
+    if not cuda_available():
+        raise EngineError(
+            "CUDA is not available on this machine",
+            hint="install a CUDA build of torch and check that a driver/GPU is visible",
+        )
+    if ":" in explicit:
+        _, _, index = explicit.partition(":")
+        if not index.isdigit() or int(index) >= torch.cuda.device_count():
+            raise EngineError(
+                f"invalid CUDA device: {explicit}",
+                hint=f"this machine exposes {torch.cuda.device_count()} CUDA device(s)",
+            )
+    return explicit
+
+
+def resolve_device(explicit: str | None) -> str:
+    if not explicit:
+        return _auto_device()
+    normalized = explicit.strip().lower()
+    if normalized in {"", "auto"}:
+        return _auto_device()
+    if normalized == "mps":
+        if not mps_available():
+            raise EngineError("MPS is not available on this machine")
+        return "mps"
+    if normalized == "cpu":
+        return "cpu"
+    if normalized == "cuda" or normalized.startswith("cuda:"):
+        return _validate_cuda(normalized)
+    raise EngineError(
+        f"unsupported device: {explicit}",
+        hint="use auto (default), mps, cuda[:N] or cpu (debug only)",
     )
 
 
@@ -187,6 +232,11 @@ class MpsEngine:
                 torch.mps.empty_cache()
             except Exception:  # noqa: BLE001 - best-effort cleanup
                 pass
+        elif self.device.startswith("cuda") and cuda_available():
+            try:
+                torch.cuda.empty_cache()
+            except Exception:  # noqa: BLE001 - best-effort cleanup
+                pass
 
 
 def _logits_processor(processor_cls: Any) -> Any:
@@ -225,3 +275,18 @@ def mps_memory_bytes() -> int | None:
         return int(torch.mps.driver_allocated_memory())
     except Exception:  # noqa: BLE001
         return None
+
+
+def device_memory_bytes(device: str | None = None) -> int | None:
+    """Driver-visible memory used on the active accelerator, if measurable."""
+    target = (device or "").strip().lower()
+    try:
+        if target.startswith("cuda") and cuda_available():
+            _, _, index = target.partition(":")
+            device_index = int(index) if index.isdigit() else None
+            return int(torch.cuda.max_memory_allocated(device_index))
+        if target.startswith("mps") or (not target and mps_available()):
+            return mps_memory_bytes()
+    except Exception:  # noqa: BLE001
+        return None
+    return None

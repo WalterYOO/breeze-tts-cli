@@ -16,7 +16,7 @@ from rich.table import Table
 
 from btts_cli import LICENSE_NOTICE, __version__
 from btts_cli.audio.metrics import metrics_capabilities
-from btts_cli.commands._common import with_error_handling
+from btts_cli.commands._common import device_option, with_error_handling
 from btts_cli.domain.model import read_incomplete_marker, read_marker
 from btts_cli.engine.base import (
     compute_model_digest,
@@ -78,6 +78,9 @@ def _device_report(requested: str | None) -> dict[str, Any]:
         "torch_version": None,
         "mps_built": False,
         "mps_available": False,
+        "cuda_available": False,
+        "cuda_device_count": 0,
+        "cuda_devices": [],
         "selected": None,
     }
     try:
@@ -91,11 +94,37 @@ def _device_report(requested: str | None) -> dict[str, Any]:
         report["mps_available"] = bool(torch.backends.mps.is_available())
     except AttributeError:
         pass
+    try:
+        if torch.cuda.is_available():
+            report["cuda_available"] = True
+            count = int(torch.cuda.device_count())
+            report["cuda_device_count"] = count
+            report["cuda_devices"] = [
+                torch.cuda.get_device_name(index) for index in range(count)
+            ]
+    except (AttributeError, RuntimeError, OSError):
+        pass
     if requested:
         report["selected"] = requested
     elif report["mps_available"]:
         report["selected"] = "mps"
+    elif report["cuda_available"]:
+        try:
+            from btts_cli.engine.mps import resolve_device
+
+            report["selected"] = resolve_device(None)
+        except Exception:  # noqa: BLE001 - report, never crash doctor
+            report["selected"] = "cuda"
     return report
+
+
+def _device_memory_bytes(device: str | None) -> int | None:
+    try:
+        from btts_cli.engine.mps import device_memory_bytes
+
+        return device_memory_bytes(device)
+    except Exception:  # noqa: BLE001 - measurement is best-effort
+        return None
 
 
 def _model_report(model_dir: Path) -> dict[str, Any]:
@@ -206,6 +235,14 @@ def _render(report: dict[str, Any]) -> None:
     else:
         table.add_row("torch", device["torch_version"])
         table.add_row("MPS available", "yes" if device["mps_available"] else "no")
+        if device["cuda_available"]:
+            table.add_row(
+                "CUDA",
+                f"{device['cuda_device_count']} device(s): "
+                + ", ".join(device["cuda_devices"][:4]),
+            )
+        else:
+            table.add_row("CUDA available", "no")
         table.add_row("device", device["selected"] or "none")
 
     metrics = report["metrics"]
@@ -227,7 +264,7 @@ def _render(report: dict[str, Any]) -> None:
             "bench",
             f"load {bench['load_s']:.1f}s, generate {bench['generate_s']:.1f}s, "
             f"audio {bench['audio_s']:.2f}s, RTF {bench['rtf']:.1f}, "
-            f"MPS memory {_gb(bench['mps_memory_bytes'])}",
+            f"device memory {_gb(bench.get('device_memory_bytes'))}",
         )
 
     console.print(table)
@@ -250,7 +287,7 @@ def _render(report: dict[str, Any]) -> None:
     help="Breeze-TTS-2 checkpoint directory (default: $BTTS_MODEL_DIR or "
     "./ms-models/Breeze-TTS-2).",
 )
-@click.option("--device", type=click.Choice(["mps", "cpu"]), default=None)
+@device_option
 @with_error_handling
 def doctor(bench: bool, as_json: bool, model_dir: Path | None, device: str | None) -> None:
     """Check the environment, model files, device, memory and license."""
@@ -342,6 +379,7 @@ def _run_bench(
     except EngineError as exc:
         report["bench"] = {"error": exc.message}
         return exc
+    peak_memory: int | None = None
     try:
         result = engine.generate(
             GenerationRequest(
@@ -352,6 +390,7 @@ def _run_bench(
                 max_new_tokens=150,
             )
         )
+        peak_memory = _device_memory_bytes(engine.device)
     except Exception as exc:  # noqa: BLE001 - report instead of crashing
         report["bench"] = {"error": f"{type(exc).__name__}: {exc}"}
         return EngineError(f"bench generation failed: {exc}")
@@ -361,21 +400,14 @@ def _run_bench(
         except Exception:  # noqa: BLE001
             pass
 
-    mps_memory = None
-    try:
-        import torch
-
-        if torch.backends.mps.is_available():
-            mps_memory = int(torch.mps.driver_allocated_memory())
-    except Exception:  # noqa: BLE001
-        mps_memory = None
-
+    mps_memory = peak_memory
     report["bench"] = {
         "load_s": round(getattr(engine, "load_seconds", 0.0), 2),
         "generate_s": round(result.elapsed_s, 2),
         "audio_s": round(result.duration_s, 2),
         "rtf": round(result.elapsed_s / result.duration_s, 2) if result.duration_s else None,
         "mps_memory_bytes": mps_memory,
+        "device_memory_bytes": mps_memory,
         "device": engine.device,
     }
     return None

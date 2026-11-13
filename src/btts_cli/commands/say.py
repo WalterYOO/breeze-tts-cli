@@ -15,6 +15,7 @@ from btts_cli.audio.hash import prefixed, sha256_file, sha256_text
 from btts_cli.audio.io import write_wav_atomic
 from btts_cli.audio.play import play_file
 from btts_cli.commands._common import (
+    device_option,
     generate_or_raise_engine_error,
     with_error_handling,
 )
@@ -59,7 +60,7 @@ RouteKind = Literal["design", "clone", "direction", "plain"]
     "--play", "play_audio", is_flag=True, help="Call afplay after the WAV is committed."
 )
 @click.option("--model", "model_dir", type=click.Path(path_type=Path), default=None)
-@click.option("--device", type=click.Choice(["mps", "cpu"]), default=None)
+@device_option
 @click.option("--max-new-tokens", type=int, default=None)
 @with_error_handling
 def say(

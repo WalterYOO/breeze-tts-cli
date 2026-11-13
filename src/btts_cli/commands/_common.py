@@ -13,6 +13,18 @@ from btts_cli.output.errors import BttsError, EngineError
 
 F = TypeVar("F", bound=Callable[..., Any])
 
+DEVICE_HELP = "auto (default), mps, cuda[:N] or cpu (debug only)."
+
+
+def device_option(func: F) -> F:
+    """Shared ``--device`` flag; validation happens in the engine layer."""
+    return click.option(
+        "--device",
+        type=str,
+        default=None,
+        help=DEVICE_HELP,
+    )(func)
+
 
 def generate_or_raise_engine_error(
     engine: Any, request: Any, *, stage: str = "generation"
@@ -30,7 +42,7 @@ def generate_or_raise_engine_error(
     except Exception as exc:
         raise EngineError(
             f"{stage} failed: {type(exc).__name__}: {exc}",
-            hint="check the MPS device, memory pressure and the model checkpoint",
+            hint="check the device, memory pressure and the model checkpoint",
         ) from exc
 
 

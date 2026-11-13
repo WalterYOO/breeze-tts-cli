@@ -29,6 +29,7 @@ from btts_cli.audio.recommend import (
     technical_flags,
 )
 from btts_cli.commands._common import (
+    device_option,
     generate_or_raise_engine_error,
     with_error_handling,
 )
@@ -181,7 +182,7 @@ def design_lint(file: Path, show_rendered: bool) -> None:
 )
 @click.option("--max-new-tokens", type=int, default=None)
 @click.option("--model", "model_dir", type=click.Path(path_type=Path), default=None)
-@click.option("--device", type=click.Choice(["mps", "cpu"]), default=None)
+@device_option
 @with_error_handling
 def design_explore(
     file: Path,
