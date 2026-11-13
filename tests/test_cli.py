@@ -93,3 +93,23 @@ def test_doctor_bench_json_success_keeps_stdout_clean(
     assert "chatty" not in result.stdout
     assert "chatty load diagnostic" in result.stderr
     assert "chatty generate diagnostic" in result.stderr
+
+
+def test_parse_meminfo_reads_bytes() -> None:
+    from btts_cli.commands.doctor import _parse_meminfo
+
+    text = (
+        "MemTotal:       197784512 kB\n"
+        "MemFree:         1234567 kB\n"
+        "MemAvailable:   150000000 kB\n"
+        "HugePages_Total:       0\n"
+    )
+    total, available = _parse_meminfo(text)
+    assert total == 197784512 * 1024
+    assert available == 150000000 * 1024
+
+
+def test_parse_meminfo_tolerates_missing_fields() -> None:
+    from btts_cli.commands.doctor import _parse_meminfo
+
+    assert _parse_meminfo("") == (None, None)

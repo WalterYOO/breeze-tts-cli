@@ -68,7 +68,24 @@ def _system_memory() -> dict[str, int | None]:
             available = free_pages * page_size
         except (OSError, ValueError, subprocess.CalledProcessError):
             available = None
+    elif sys.platform.startswith("linux"):
+        try:
+            total, available = _parse_meminfo(Path("/proc/meminfo").read_text())
+        except OSError:
+            total = None
+            available = None
     return {"total_bytes": total, "available_bytes": available}
+
+
+def _parse_meminfo(text: str) -> tuple[int | None, int | None]:
+    """Extract (MemTotal, MemAvailable) in bytes from ``/proc/meminfo``."""
+    info: dict[str, int] = {}
+    for line in text.splitlines():
+        key, _, rest = line.partition(":")
+        fields = rest.strip().split()
+        if fields and fields[0].isdigit():
+            info[key.strip()] = int(fields[0]) * 1024
+    return info.get("MemTotal"), info.get("MemAvailable")
 
 
 def _device_report(requested: str | None) -> dict[str, Any]:
